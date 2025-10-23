@@ -8,9 +8,22 @@ SITES_DIR="/opt/sites"
 SHARED_DIR="/opt/shared-services"
 NETWORK="shared_net"
 AGENT_PORT=8000
-MYSQL_ROOT_PASS="${MYSQL_ROOT_PASS:-root}"
+CONFIG_DIR="/opt/serverbond-config"
 AGENT_TOKEN="${AGENT_TOKEN:-$(openssl rand -hex 16)}"
 UBUNTU_CODENAME="$(lsb_release -cs 2>/dev/null || echo 'noble')"
+
+# === MySQL Root Password Generation ===
+MYSQL_ROOT_PASS_FILE="${CONFIG_DIR}/mysql_root_password.txt"
+if [[ -f "${MYSQL_ROOT_PASS_FILE}" ]]; then
+  MYSQL_ROOT_PASS="$(cat ${MYSQL_ROOT_PASS_FILE})"
+  log "Mevcut MySQL root şifresi kullanılıyor"
+else
+  MYSQL_ROOT_PASS="$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)"
+  mkdir -p "${CONFIG_DIR}"
+  echo "${MYSQL_ROOT_PASS}" > "${MYSQL_ROOT_PASS_FILE}"
+  chmod 600 "${MYSQL_ROOT_PASS_FILE}"
+  log "Yeni MySQL root şifresi oluşturuldu ve kaydedildi"
+fi
 
 log() { echo -e "\033[1;36m[INFO]\033[0m $*"; }
 success() { echo -e "\033[1;32m[SUCCESS]\033[0m $*"; }
@@ -124,12 +137,64 @@ success "Traefik ve shared servisler aktif."
 
 # === 8️⃣ Agent kurulumu ===
 log "ServerBond Agent kuruluyor..."
-if [[ ! -f "${BASE_DIR}/agent.py" ]]; then
-  curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-agent/main/agent.py -o "${BASE_DIR}/agent.py"
+if [[ ! -f "/opt/serverbond-agent/agent.py" ]]; then
+  curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/agent.py -o "/opt/serverbond-agent/agent.py"
 fi
 
-# Template klasörleri
-mkdir -p "${BASE_DIR}/templates"/{laravel,laravel-inertia,nextjs,nodeapi,static}
+# Config dosyasını indir
+curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/config.json -o "/opt/serverbond-agent/config.json"
+
+# Agent dosyasını çalıştırılabilir yap
+chmod +x "/opt/serverbond-agent/agent.py"
+
+# === 8️⃣ Template'leri indir ===
+log "Template'ler indiriliyor..."
+mkdir -p "/opt/serverbond-agent/templates"
+
+# Template dosyalarını GitHub'dan indir
+TEMPLATE_URL="https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/templates"
+
+# Laravel template
+mkdir -p "/opt/serverbond-agent/templates/laravel"
+curl -fsSL "${TEMPLATE_URL}/laravel/docker-compose.yml.j2" -o "/opt/serverbond-agent/templates/laravel/docker-compose.yml.j2"
+curl -fsSL "${TEMPLATE_URL}/laravel/Dockerfile.j2" -o "/opt/serverbond-agent/templates/laravel/Dockerfile.j2"
+curl -fsSL "${TEMPLATE_URL}/laravel/nginx.conf.j2" -o "/opt/serverbond-agent/templates/laravel/nginx.conf.j2"
+curl -fsSL "${TEMPLATE_URL}/laravel/supervisord.conf.j2" -o "/opt/serverbond-agent/templates/laravel/supervisord.conf.j2"
+
+# Laravel Inertia template
+mkdir -p "/opt/serverbond-agent/templates/laravel-inertia"
+curl -fsSL "${TEMPLATE_URL}/laravel-inertia/docker-compose.yml.j2" -o "/opt/serverbond-agent/templates/laravel-inertia/docker-compose.yml.j2"
+curl -fsSL "${TEMPLATE_URL}/laravel-inertia/Dockerfile.j2" -o "/opt/serverbond-agent/templates/laravel-inertia/Dockerfile.j2"
+curl -fsSL "${TEMPLATE_URL}/laravel-inertia/nginx.conf.j2" -o "/opt/serverbond-agent/templates/laravel-inertia/nginx.conf.j2"
+curl -fsSL "${TEMPLATE_URL}/laravel-inertia/supervisord.conf.j2" -o "/opt/serverbond-agent/templates/laravel-inertia/supervisord.conf.j2"
+
+# Next.js template
+mkdir -p "/opt/serverbond-agent/templates/nextjs"
+curl -fsSL "${TEMPLATE_URL}/nextjs/docker-compose.yml.j2" -o "/opt/serverbond-agent/templates/nextjs/docker-compose.yml.j2"
+curl -fsSL "${TEMPLATE_URL}/nextjs/Dockerfile.j2" -o "/opt/serverbond-agent/templates/nextjs/Dockerfile.j2"
+curl -fsSL "${TEMPLATE_URL}/nextjs/next.config.js.j2" -o "/opt/serverbond-agent/templates/nextjs/next.config.js.j2"
+
+# Node.js API template
+mkdir -p "/opt/serverbond-agent/templates/nodeapi"
+curl -fsSL "${TEMPLATE_URL}/nodeapi/docker-compose.yml.j2" -o "/opt/serverbond-agent/templates/nodeapi/docker-compose.yml.j2"
+curl -fsSL "${TEMPLATE_URL}/nodeapi/Dockerfile.j2" -o "/opt/serverbond-agent/templates/nodeapi/Dockerfile.j2"
+curl -fsSL "${TEMPLATE_URL}/nodeapi/package.json.j2" -o "/opt/serverbond-agent/templates/nodeapi/package.json.j2"
+curl -fsSL "${TEMPLATE_URL}/nodeapi/tsconfig.json.j2" -o "/opt/serverbond-agent/templates/nodeapi/tsconfig.json.j2"
+
+# Nuxt template
+mkdir -p "/opt/serverbond-agent/templates/nuxt"
+curl -fsSL "${TEMPLATE_URL}/nuxt/docker-compose.yml.j2" -o "/opt/serverbond-agent/templates/nuxt/docker-compose.yml.j2"
+curl -fsSL "${TEMPLATE_URL}/nuxt/Dockerfile.j2" -o "/opt/serverbond-agent/templates/nuxt/Dockerfile.j2"
+curl -fsSL "${TEMPLATE_URL}/nuxt/nuxt.config.ts.j2" -o "/opt/serverbond-agent/templates/nuxt/nuxt.config.ts.j2"
+
+# Static template
+mkdir -p "/opt/serverbond-agent/templates/static"
+curl -fsSL "${TEMPLATE_URL}/static/docker-compose.yml.j2" -o "/opt/serverbond-agent/templates/static/docker-compose.yml.j2"
+curl -fsSL "${TEMPLATE_URL}/static/Dockerfile.j2" -o "/opt/serverbond-agent/templates/static/Dockerfile.j2"
+curl -fsSL "${TEMPLATE_URL}/static/nginx.conf.j2" -o "/opt/serverbond-agent/templates/static/nginx.conf.j2"
+curl -fsSL "${TEMPLATE_URL}/static/index.html.j2" -o "/opt/serverbond-agent/templates/static/index.html.j2"
+
+success "Template'ler başarıyla indirildi."
 
 # === 9️⃣ Python ortamı ===
 apt-get install -y python3 python3-pip > /dev/null
@@ -144,17 +209,22 @@ After=network-online.target docker.service
 Wants=docker.service
 
 [Service]
-ExecStart=/usr/bin/python3 ${BASE_DIR}/agent.py
-WorkingDirectory=${BASE_DIR}
+Type=simple
+ExecStart=/usr/bin/python3 /opt/serverbond-agent/agent.py
+WorkingDirectory=/opt/serverbond-agent
 Restart=always
 RestartSec=3
+User=root
+Group=root
 Environment=SB_BASE_DIR=${SITES_DIR}
-Environment=SB_TEMPLATE_DIR=${BASE_DIR}/templates
+Environment=SB_TEMPLATE_DIR=/opt/serverbond-agent/templates
 Environment=SB_NETWORK=${NETWORK}
+Environment=SB_CONFIG_DIR=${CONFIG_DIR}
 Environment=SB_SHARED_MYSQL_CONTAINER=shared_mysql
 Environment=SB_SHARED_REDIS_CONTAINER=shared_redis
-Environment=SB_MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASS}
 Environment=SB_AGENT_TOKEN=${AGENT_TOKEN}
+Environment=SB_AGENT_PORT=${AGENT_PORT}
+Environment=PYTHONUNBUFFERED=1
 
 [Install]
 WantedBy=multi-user.target
@@ -187,10 +257,15 @@ Agent URL     : http://$(hostname -I | awk '{print $1}'):${AGENT_PORT}
 Agent Token   : ${AGENT_TOKEN}
 
 Shared Servisler:
-  - MySQL       : shared_mysql (root:${MYSQL_ROOT_PASS})
+  - MySQL       : shared_mysql (root şifresi: ${CONFIG_DIR}/mysql_root_password.txt)
   - Redis       : shared_redis
   - phpMyAdmin  : https://pma.serverbond.dev
   - Traefik     : https://<sunucu-ip> (dashboard port 8080 opsiyonel)
+
+ÖNEMLİ BİLGİLER:
+  - MySQL root şifresi: ${CONFIG_DIR}/mysql_root_password.txt dosyasında saklanıyor
+  - Şifre dosyası sadece root tarafından okunabilir (chmod 600)
+  - Agent Token: ${AGENT_TOKEN}
 
 Yeni site eklemek için Panel veya API üzerinden şu endpoint'i çağır:
 POST /build  (Agent)

@@ -1,144 +1,191 @@
-# Ubuntu 24.04 Docker Kurulum Scripti
+# ServerBond Docker Agent
 
-Bu repository, Ubuntu 24.04 sunucularında sıfırdan Docker kurulumu yapan otomatik bir script içerir.
+Bu repository, Ubuntu 24.04 sunucularında sıfırdan ServerBond Docker Agent kurulumu yapan otomatik bir script içerir.
 
 ## 🚀 Özellikler
 
 - ✅ Ubuntu 24.04 için optimize edilmiş
 - ✅ Docker CE (Community Edition) kurulumu
 - ✅ Docker Compose (standalone) kurulumu
+- ✅ Traefik reverse proxy kurulumu
+- ✅ MySQL ve Redis shared servisleri
+- ✅ ServerBond Agent API
+- ✅ Çoklu framework desteği (Laravel, Next.js, Nuxt, Node.js, Static)
+- ✅ Otomatik SSL sertifikası (Let's Encrypt)
+- ✅ phpMyAdmin arayüzü
 - ✅ Güvenlik konfigürasyonları
-- ✅ Otomatik kullanıcı grubu ekleme
 - ✅ Detaylı hata kontrolü ve loglama
 - ✅ Renkli çıktı ve kullanıcı dostu arayüz
 
 ## 📋 Gereksinimler
 
 - Ubuntu 24.04 (diğer versiyonlar için uyarı verir)
-- Sudo yetkisi olan kullanıcı
+- Root yetkisi
 - İnternet bağlantısı
+- Minimum 2GB RAM (önerilen 4GB+)
+- Minimum 10GB disk alanı
 
 ## 🛠️ Kurulum
 
-### 1. Scripti İndirin
+### Tek Komut ile Kurulum
 
 ```bash
-# Repository'yi klonlayın
-git clone https://github.com/your-username/serverbond-docker.git
-cd serverbond-docker
+# Root olarak çalıştırın
+sudo su
 
-# Veya sadece scripti indirin
-wget https://raw.githubusercontent.com/your-username/serverbond-docker/main/install.sh
-chmod +x install.sh
+# Tek komut ile kurulum
+curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/install.sh | bash
 ```
 
-### 2. Scripti Çalıştırın
+### Manuel Kurulum
 
 ```bash
+# Root olarak giriş yapın
+sudo su
+
+# Scripti indirin
+curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/install.sh -o install.sh
+chmod +x install.sh
+
+# Kurulumu başlatın
 ./install.sh
 ```
 
-**ÖNEMLİ:** Scripti root kullanıcısı olarak değil, sudo yetkisi olan normal kullanıcı ile çalıştırın.
+**ÖNEMLİ:** Scripti root kullanıcısı olarak çalıştırın.
 
 ## 📝 Script Ne Yapar?
 
-1. **Sistem Kontrolleri**
+1. **Sistem Hazırlığı**
    - Ubuntu versiyonunu kontrol eder
    - Root kullanıcı kontrolü yapar
-
-2. **Sistem Güncellemesi**
-   - Paket listesini günceller
-   - Sistem paketlerini yükseltir
+   - Sistem paketlerini günceller
    - Gerekli bağımlılıkları yükler
 
-3. **Eski Kurulumları Temizler**
-   - Eski Docker kurulumlarını kaldırır
-   - Temiz bir kurulum için gerekli dosyaları siler
-
-4. **Docker Kurulumu**
-   - Docker'ın resmi GPG anahtarını ekler
-   - Docker repository'sini yapılandırır
-   - Docker CE, Docker CLI ve containerd yükler
-
-5. **Docker Compose Kurulumu**
-   - En son Docker Compose versiyonunu indirir
-   - Standalone olarak yükler
-
-6. **Servis Yapılandırması**
+2. **Docker Kurulumu**
+   - Docker CE kurulumu
+   - Docker Compose kurulumu
    - Docker servisini başlatır ve etkinleştirir
-   - Kullanıcıyı docker grubuna ekler
-   - Docker daemon konfigürasyonu yapar
 
-7. **Test ve Doğrulama**
-   - Kurulumu doğrular
-   - Test container çalıştırır
+3. **Shared Network ve Servisler**
+   - Docker network oluşturur
+   - Traefik reverse proxy kurulumu
+   - MySQL 8.4 shared servisi
+   - Redis shared servisi
+   - phpMyAdmin arayüzü
+
+4. **ServerBond Agent**
+   - Agent Python scriptini indirir
+   - Template'leri GitHub'dan indirir
+   - Python bağımlılıklarını yükler
+   - systemd servisi oluşturur
+
+5. **Güvenlik ve Firewall**
+   - UFW firewall yapılandırması
+   - SSL sertifikası için Let's Encrypt
+   - Güvenli port ayarları
+
+6. **Template Sistemi**
+   - Laravel (PHP 8.3)
+   - Laravel Inertia
+   - Next.js
+   - Nuxt.js
+   - Node.js API
+   - Static HTML
 
 ## 🔧 Kurulum Sonrası
 
 Kurulum tamamlandıktan sonra:
 
-1. **Oturumu kapatıp tekrar açın** (docker grubu değişiklikleri için)
-2. Docker'ın çalıştığını test edin:
+1. **Agent URL'si**: `http://sunucu-ip:8000`
+2. **Agent Token**: Kurulum sırasında gösterilir
+3. **phpMyAdmin**: `https://pma.serverbond.dev`
+4. **MySQL Root Şifresi**: `/opt/serverbond-config/mysql_root_password.txt`
+
+### Yeni Site Ekleme
 
 ```bash
-docker --version
-docker-compose --version
-docker run hello-world
+# Laravel projesi ekleme
+curl -X POST http://localhost:8000/build \
+  -H "X-Agent-Token: YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repo": "https://github.com/username/project.git",
+    "domain": "project.serverbond.dev",
+    "framework": "laravel",
+    "db_name": "project_db",
+    "db_user": "project_user",
+    "db_pass": "secret123"
+  }'
+
+# Next.js projesi ekleme
+curl -X POST http://localhost:8000/build \
+  -H "X-Agent-Token: YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repo": "https://github.com/username/nextjs-app.git",
+    "domain": "app.serverbond.dev",
+    "framework": "nextjs"
+  }'
 ```
 
 ## 🛡️ Güvenlik Önerileri
 
-Script aşağıdaki güvenlik önerilerini içerir:
-
-- Docker socket'ini dışarıya açmayın
-- Container'ları root olmayan kullanıcılarla çalıştırın
-- Düzenli olarak Docker'ı güncelleyin
-- Güvenli base image'lar kullanın
-- Production ortamında dikkatli olun
+- Agent Token'ı güvenli tutun
+- MySQL root şifresini düzenli olarak değiştirin
+- SSL sertifikalarını düzenli olarak yenileyin
+- Firewall kurallarını kontrol edin
+- Container'ları düzenli olarak güncelleyin
 
 ## 🔍 Sorun Giderme
 
-### Docker komutları çalışmıyor
+### Agent çalışmıyor
 
 ```bash
-# Kullanıcının docker grubunda olduğunu kontrol edin
-groups $USER
+# Agent servisini kontrol edin
+sudo systemctl status serverbond-agent
 
-# Docker servisinin çalıştığını kontrol edin
+# Agent loglarını görüntüleyin
+sudo journalctl -u serverbond-agent -f
+
+# Agent'ı yeniden başlatın
+sudo systemctl restart serverbond-agent
+```
+
+### Docker servisleri çalışmıyor
+
+```bash
+# Docker servisini kontrol edin
 sudo systemctl status docker
 
-# Docker servisini yeniden başlatın
-sudo systemctl restart docker
+# Shared servisleri kontrol edin
+docker ps -a
+
+# Shared servisleri yeniden başlatın
+cd /opt/shared-services
+docker compose up -d
 ```
 
-### Permission denied hatası
+### Template'ler indirilmiyor
 
 ```bash
-# Kullanıcıyı docker grubuna manuel olarak ekleyin
-sudo usermod -aG docker $USER
+# Template'leri manuel olarak indirin
+cd /opt/serverbond-agent
+rm -rf templates
+mkdir -p templates
 
-# Oturumu kapatıp tekrar açın
+# Template'leri tekrar indirin
+curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/templates/laravel/docker-compose.yml.j2 -o templates/laravel/docker-compose.yml.j2
+# ... diğer template'ler için benzer komutlar
 ```
 
-### Eski Docker kurulumu sorunları
+## 📊 Desteklenen Framework'ler
 
-```bash
-# Eski kurulumları tamamen temizleyin
-sudo apt-get remove docker docker-engine docker.io containerd runc
-sudo rm -rf /var/lib/docker
-sudo rm -rf /var/lib/containerd
-sudo rm -rf /etc/docker
-
-# Scripti tekrar çalıştırın
-./install.sh
-```
-
-## 📊 Sistem Gereksinimleri
-
-- **RAM:** Minimum 2GB (önerilen 4GB+)
-- **Disk:** Minimum 10GB boş alan
-- **CPU:** x86_64 mimarisi
-- **OS:** Ubuntu 24.04 LTS
+- **Laravel**: PHP 8.3, Nginx, MySQL, Redis
+- **Laravel Inertia**: PHP 8.3, Nginx, MySQL, Redis, Vite
+- **Next.js**: Node.js 20, Standalone build
+- **Nuxt.js**: Node.js 20, SSR/SSG
+- **Node.js API**: Express/Fastify, TypeScript
+- **Static**: Nginx, HTML/CSS/JS
 
 ## 🤝 Katkıda Bulunma
 
@@ -150,7 +197,7 @@ sudo rm -rf /etc/docker
 
 ## 📄 Lisans
 
-Bu proje MIT lisansı altında lisanslanmıştır. Detaylar için `LICENSE` dosyasına bakın.
+Bu proje MIT lisansı altında lisanslanmıştır.
 
 ## ⚠️ Uyarı
 
@@ -159,9 +206,9 @@ Bu script production ortamında kullanmadan önce test edin. Güvenlik ve perfor
 ## 📞 Destek
 
 Sorunlarınız için:
-- Issue oluşturun
+- GitHub Issues oluşturun
 - Dokümantasyonu kontrol edin
-- Docker resmi dokümantasyonuna bakın
+- Agent loglarını inceleyin
 
 ---
 
