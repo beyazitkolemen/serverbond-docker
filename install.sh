@@ -9,7 +9,7 @@ if [ -z "${BASH_VERSION:-}" ]; then
 fi
 
 # === UTILITY FUNCTIONS ===
-log_info_info() { 
+log_info() { 
     echo -e "\033[1;36m[INFO]\033[0m $*"
 }
 
