@@ -1,0 +1,36 @@
+version: '3.9'
+
+services:
+  {{ project_name }}:
+    build: .
+    container_name: {{ project_name }}
+    restart: always
+    environment:
+      - NODE_ENV={{ node_env }}
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - DATABASE_URL=mysql://{{ db_user }}:{{ db_password }}@{{ shared_mysql_container }}:3306/{{ db_name }}
+      - REDIS_URL=redis://{{ shared_redis_container }}:6379
+      {% for key, value in env_vars.items() %}
+      - {{ key }}={{ value }}
+      {% endfor %}
+    networks:
+      - {{ shared_network }}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.{{ project_name }}.rule=Host(`{{ domain }}`)"
+      - "traefik.http.routers.{{ project_name }}.entrypoints=websecure"
+      - "traefik.http.routers.{{ project_name }}.tls.certresolver=mytls"
+      - "traefik.http.services.{{ project_name }}.loadbalancer.server.port=3000"
+      {% if redirect_www %}
+      - "traefik.http.routers.{{ project_name }}-www.rule=Host(`www.{{ domain }}`)"
+      - "traefik.http.routers.{{ project_name }}-www.entrypoints=websecure"
+      - "traefik.http.routers.{{ project_name }}-www.tls.certresolver=mytls"
+      - "traefik.http.routers.{{ project_name }}-www.middlewares={{ project_name }}-redirect"
+      - "traefik.http.middlewares.{{ project_name }}-redirect.redirectregex.regex=^https://www\\.(.*)"
+      - "traefik.http.middlewares.{{ project_name }}-redirect.redirectregex.replacement=https://$${1}"
+      {% endif %}
+
+networks:
+  {{ shared_network }}:
+    external: true
