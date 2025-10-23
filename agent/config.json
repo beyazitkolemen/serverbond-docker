@@ -18,7 +18,6 @@
   },
   "base_system": {
     "traefik_email": "admin@serverbond.dev",
-    "phpmyadmin_domain": "pma.serverbond.dev",
     "mysql_root_password_file": "/opt/serverbond-config/mysql_root_password.txt",
     "shared_services_dir": "/opt/shared-services",
     "letsencrypt_dir": "/opt/shared-services/letsencrypt",

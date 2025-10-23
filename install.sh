@@ -250,20 +250,6 @@ services:
     networks:
       - {base_ctx['network']}
 
-  phpmyadmin:
-    image: phpmyadmin/phpmyadmin
-    container_name: phpmyadmin
-    restart: unless-stopped
-    environment:
-      PMA_HOST: shared_mysql
-      PMA_PORT: 3306
-    networks:
-      - {base_ctx['network']}
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.phpmyadmin.rule=Host:pma.serverbond.dev"
-      - "traefik.http.routers.phpmyadmin.tls=true"
-      - "traefik.http.routers.phpmyadmin.tls.certresolver=letsencrypt"
 
 volumes:
   mysql_data:
@@ -286,7 +272,7 @@ python3 /tmp/render_base_system.py "${MYSQL_ROOT_PASS}" "${SHARED_DIR}"
 
 # Docker container'ları kontrol et ve sadece gerekirse başlat
 log_info "Docker container'lar kontrol ediliyor..."
-if docker compose -f "${SHARED_DIR}/docker-compose.yml" ps --services --filter "status=running" | grep -q "shared_mysql\|shared_redis\|traefik\|phpmyadmin"; then
+if docker compose -f "${SHARED_DIR}/docker-compose.yml" ps --services --filter "status=running" | grep -q "shared_mysql\|shared_redis\|traefik"; then
     log_info "Base sistem container'ları zaten çalışıyor ✅"
     docker compose -f "${SHARED_DIR}/docker-compose.yml" ps
 else

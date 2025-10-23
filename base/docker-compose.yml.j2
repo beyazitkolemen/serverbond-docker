@@ -45,19 +45,6 @@ services:
       - ./data/redis:/data
     networks: [{{ network }}]
 
-  phpmyadmin:
-    image: phpmyadmin:latest
-    container_name: phpmyadmin
-    environment:
-      PMA_HOST: {{ shared_mysql_container }}
-      PMA_USER: root
-      PMA_PASSWORD: {{ mysql_root_password }}
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.pma.rule=Host(`{{ phpmyadmin_domain }}`)"
-      - "traefik.http.routers.pma.entrypoints=websecure"
-      - "traefik.http.routers.pma.tls.certresolver=mytls"
-    networks: [{{ network }}]
 
 networks:
   {{ network }}:
