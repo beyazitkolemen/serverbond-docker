@@ -25,6 +25,10 @@ from modules.base_system import (
     start_base_system, update_systemd_service, get_systemd_status
 )
 from modules.site_builder import build_site, redeploy_site
+from modules.monitoring import monitor
+from modules.backup import backup_manager
+from modules.logger import logger
+from modules.security import validate_build_request, validate_token
 
 # === CONFIG LOADING ===
 CONFIG = load_config()
@@ -98,8 +102,21 @@ def delete_site_endpoint(site_name: str, x_agent_token: str = Header(None)):
 async def build_site_endpoint(req: BuildRequest, x_agent_token: str = Header(None)):
     protect(x_agent_token, AGENT_TOKEN)
     try:
-        return await build_site(req, MYSQL_ROOT_PASS)
+        # Validate request data
+        validate_build_request(req.dict())
+        
+        # Log build attempt
+        logger.info(f"Build request received for {req.domain} with framework {req.framework}")
+        
+        result = await build_site(req, MYSQL_ROOT_PASS)
+        
+        logger.info(f"Build completed successfully for {req.domain}")
+        return result
+        
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Build failed for {req.domain}: {e}")
         raise HTTPException(500, f"Build failed: {e}")
 
 @app.post("/redeploy")
@@ -149,6 +166,88 @@ def get_php_versions_endpoint(x_agent_token: str = Header(None)):
 @app.post("/requirements/update")
 def update_requirements_endpoint(x_agent_token: str = Header(None)):
     return update_requirements(x_agent_token)
+
+# === PRODUCTION MONITORING ===
+@app.get("/health/detailed")
+def detailed_health_check(x_agent_token: str = Header(None)):
+    protect(x_agent_token, AGENT_TOKEN)
+    try:
+        health_status = monitor.get_system_health()
+        return {
+            "status": health_status.status,
+            "timestamp": health_status.timestamp.isoformat(),
+            "uptime": health_status.uptime,
+            "metrics": {
+                "memory_usage": health_status.memory_usage,
+                "cpu_usage": health_status.cpu_usage,
+                "disk_usage": health_status.disk_usage
+            },
+            "details": health_status.details
+        }
+    except Exception as e:
+        logger.error(f"Detailed health check failed: {e}")
+        raise HTTPException(500, f"Health check failed: {e}")
+
+@app.get("/monitoring/containers")
+def get_container_metrics(x_agent_token: str = Header(None)):
+    protect(x_agent_token, AGENT_TOKEN)
+    try:
+        containers = monitor.get_container_metrics()
+        sites = monitor.get_site_metrics()
+        return {
+            "containers": containers,
+            "sites": sites,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Container metrics failed: {e}")
+        raise HTTPException(500, f"Metrics collection failed: {e}")
+
+# === BACKUP MANAGEMENT ===
+@app.post("/backup/full")
+def create_full_backup(x_agent_token: str = Header(None)):
+    protect(x_agent_token, AGENT_TOKEN)
+    try:
+        return backup_manager.create_full_backup()
+    except Exception as e:
+        logger.error(f"Full backup failed: {e}")
+        raise HTTPException(500, f"Backup creation failed: {e}")
+
+@app.post("/backup/site/{site_name}")
+def create_site_backup(site_name: str, x_agent_token: str = Header(None)):
+    protect(x_agent_token, AGENT_TOKEN)
+    try:
+        return backup_manager.create_site_backup(site_name)
+    except Exception as e:
+        logger.error(f"Site backup failed for {site_name}: {e}")
+        raise HTTPException(500, f"Site backup failed: {e}")
+
+@app.get("/backup/list")
+def list_backups(x_agent_token: str = Header(None)):
+    protect(x_agent_token, AGENT_TOKEN)
+    try:
+        return {"backups": backup_manager.list_backups()}
+    except Exception as e:
+        logger.error(f"Backup listing failed: {e}")
+        raise HTTPException(500, f"Backup listing failed: {e}")
+
+@app.post("/backup/restore/{backup_name}")
+def restore_backup(backup_name: str, x_agent_token: str = Header(None)):
+    protect(x_agent_token, AGENT_TOKEN)
+    try:
+        return backup_manager.restore_backup(backup_name)
+    except Exception as e:
+        logger.error(f"Backup restore failed for {backup_name}: {e}")
+        raise HTTPException(500, f"Backup restore failed: {e}")
+
+@app.post("/backup/cleanup")
+def cleanup_backups(keep_days: int = 30, x_agent_token: str = Header(None)):
+    protect(x_agent_token, AGENT_TOKEN)
+    try:
+        return backup_manager.cleanup_old_backups(keep_days)
+    except Exception as e:
+        logger.error(f"Backup cleanup failed: {e}")
+        raise HTTPException(500, f"Backup cleanup failed: {e}")
 
 # === BASE SYSTEM MANAGEMENT ===
 @app.get("/base-system/status")

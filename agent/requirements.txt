@@ -1,6 +1,28 @@
+# Core web framework
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
+
+# Template engine
 jinja2==3.1.2
+
+# Data validation
 pydantic==2.5.0
+
+# File operations
 aiofiles==23.2.1
 python-multipart==0.0.6
+
+# Production monitoring
+psutil==5.9.6
+
+# Security
+cryptography==41.0.7
+
+# HTTP client
+httpx==0.25.2
+
+# Environment management
+python-dotenv==1.0.0
+
+# Logging
+structlog==23.2.0

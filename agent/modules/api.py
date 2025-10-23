@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from .config import load_config
 from .utils import log, write_file, get_container_status, detect_framework, provision_mysql
 from .templates import render, generate_laravel_env
+from .cache import cached, invalidate_cache
 
 # Load config
 CONFIG = load_config()
@@ -42,8 +43,9 @@ def health_check():
     return {"status": "healthy", "time": datetime.utcnow().isoformat()}
 
 # === SYSTEM STATUS ===
+@cached("system_status", ttl=60)
 def system_status(agent_token: str):
-    """Get system status"""
+    """Get system status with caching"""
     protect(agent_token, agent_token)
     try:
         # Docker durumu
@@ -75,8 +77,9 @@ def system_status(agent_token: str):
         raise HTTPException(500, f"Failed to get system status: {e}")
 
 # === SITES MANAGEMENT ===
+@cached("sites_list", ttl=120)
 def get_sites(agent_token: str):
-    """Get all deployed sites"""
+    """Get all deployed sites with caching"""
     protect(agent_token, agent_token)
     try:
         sites_dir = Path(CONFIG["paths"]["base_dir"])
@@ -135,6 +138,9 @@ def start_site(site_name: str, agent_token: str):
     """Start a site"""
     protect(agent_token, agent_token)
     try:
+        # Invalidate cache
+        invalidate_cache("sites_list")
+        invalidate_cache("system_status")
         site_dir = Path(CONFIG["paths"]["base_dir"]) / site_name
         if not site_dir.exists() or not (site_dir / "docker-compose.yml").exists():
             raise HTTPException(404, "Site not found")
