@@ -1,10 +1,26 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Ensure we're running with bash, not sh
+if [ -z "${BASH_VERSION:-}" ]; then
+    echo "Error: This script requires bash, not sh"
+    echo "Please run with: bash $0"
+    exit 1
+fi
+
 # === UTILITY FUNCTIONS ===
-log() { echo -e "\033[1;36m[INFO]\033[0m $*"; }
-success() { echo -e "\033[1;32m[SUCCESS]\033[0m $*"; }
-error() { echo -e "\033[1;31m[ERROR]\033[0m $*" >&2; exit 1; }
+log_info_info() { 
+    echo -e "\033[1;36m[INFO]\033[0m $*"
+}
+
+success() { 
+    echo -e "\033[1;32m[SUCCESS]\033[0m $*"
+}
+
+error() { 
+    echo -e "\033[1;31m[ERROR]\033[0m $*" >&2
+    exit 1
+}
 
 # === GLOBAL CONFIG ===
 AGENT_VERSION="3.0"
@@ -21,13 +37,13 @@ UBUNTU_CODENAME="$(lsb_release -cs 2>/dev/null || echo 'noble')"
 MYSQL_ROOT_PASS_FILE="${CONFIG_DIR}/mysql_root_password.txt"
 if [[ -f "${MYSQL_ROOT_PASS_FILE}" ]]; then
   MYSQL_ROOT_PASS="$(cat ${MYSQL_ROOT_PASS_FILE})"
-  log "Mevcut MySQL root şifresi kullanılıyor"
+  log_info "Mevcut MySQL root şifresi kullanılıyor"
 else
   MYSQL_ROOT_PASS="$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)"
   mkdir -p "${CONFIG_DIR}" 2>/dev/null || true
   echo "${MYSQL_ROOT_PASS}" > "${MYSQL_ROOT_PASS_FILE}" 2>/dev/null || true
   chmod 600 "${MYSQL_ROOT_PASS_FILE}" 2>/dev/null || true
-  log "Yeni MySQL root şifresi oluşturuldu ve kaydedildi"
+  log_info "Yeni MySQL root şifresi oluşturuldu ve kaydedildi"
 fi
 
 # === 1️⃣ Root check ===
@@ -36,21 +52,31 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 # === 2️⃣ Sistem hazırlığı ===
-log "Sistem güncelleniyor..."
+log_info "Sistem güncelleniyor..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq ca-certificates curl git jq lsb-release ufw openssl > /dev/null
 
 # === 3️⃣ Docker kurulumu ===
 if ! command -v docker >/dev/null 2>&1; then
-  log "Docker yükleniyor..."
+  log_info "Docker yükleniyor..."
   curl -fsSL https://get.docker.com | bash
   systemctl enable docker
 fi
 
+# Docker daemon'ı başlat
+log_info "Docker daemon başlatılıyor..."
+systemctl start docker
+sleep 3
+
+# Docker daemon'ın çalıştığını kontrol et
+if ! docker info >/dev/null 2>&1; then
+  error "Docker daemon başlatılamadı. Lütfen manuel olarak başlatın: sudo systemctl start docker"
+fi
+
 # === 4️⃣ Docker Compose kurulumu ===
 if ! command -v docker compose >/dev/null 2>&1; then
-  log "Docker Compose (v2) kuruluyor..."
+  log_info "Docker Compose (v2) kuruluyor..."
   mkdir -p /usr/local/lib/docker/cli-plugins
   curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-$(uname -m) \
     -o /usr/local/lib/docker/cli-plugins/docker-compose
@@ -58,14 +84,31 @@ if ! command -v docker compose >/dev/null 2>&1; then
 fi
 
 # === 5️⃣ Ortak network ===
-log "Shared network oluşturuluyor: ${NETWORK}"
+log_info "Shared network oluşturuluyor: ${NETWORK}"
 docker network create "${NETWORK}" || true
 
 # === 6️⃣ Dizin yapısı ===
 mkdir -p "${BASE_DIR}" "${SITES_DIR}" "${SHARED_DIR}"/{data,backups,logs}
 
+# === 6.5️⃣ Python ortamı (jinja2 için gerekli) ===
+log_info "Python ortamı hazırlanıyor..."
+apt-get install -y python3 python3-pip python3-venv > /dev/null
+
+# Requirements dosyasını indir
+curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/requirements.txt -o "/tmp/requirements.txt"
+
+# Python paketlerini yükle
+log_info "Python paketleri yükleniyor..."
+pip3 install -r /tmp/requirements.txt > /dev/null
+
+# Jinja2'nin yüklendiğini kontrol et
+if ! python3 -c "import jinja2" >/dev/null 2>&1; then
+  log_info "Jinja2 manuel olarak yükleniyor..."
+  pip3 install jinja2 > /dev/null
+fi
+
 # === 7️⃣ Base sistem kurulumu ===
-log "Base sistem yapılandırılıyor..."
+log_info "Base sistem yapılandırılıyor..."
 # Base sistem template'ini render et ve kur
 python3 -c "
 import json
@@ -119,7 +162,7 @@ docker compose -f "${SHARED_DIR}/docker-compose.yml" up -d
 success "Base sistem aktif."
 
 # === 8️⃣ Agent kurulumu ===
-log "ServerBond Agent kuruluyor..."
+log_info "ServerBond Agent kuruluyor..."
 if [[ ! -f "/opt/serverbond-agent/agent.py" ]]; then
   curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/agent.py -o "/opt/serverbond-agent/agent.py"
 fi
@@ -143,7 +186,7 @@ curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/ma
 chmod +x "/opt/serverbond-agent/agent.py"
 
 # === 8️⃣ Template'leri indir ===
-log "Template'ler indiriliyor..."
+log_info "Template'ler indiriliyor..."
 mkdir -p "/opt/serverbond-agent/templates"
 mkdir -p "/opt/serverbond-agent/base"
 
@@ -196,17 +239,10 @@ curl -fsSL "https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/m
 
 success "Template'ler başarıyla indirildi."
 
-# === 9️⃣ Python ortamı ===
-apt-get install -y python3 python3-pip > /dev/null
-
-# Requirements dosyasını indir
-curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/requirements.txt -o "/tmp/requirements.txt"
-
-# Python paketlerini yükle
-pip3 install -r /tmp/requirements.txt > /dev/null
+# === 9️⃣ Python ortamı (zaten yukarıda kuruldu) ===
 
 # === 🔟 systemd servisi ===
-log "systemd servisi oluşturuluyor..."
+log_info "systemd servisi oluşturuluyor..."
 
 # Systemd servis dosyasını oluştur
 cat > /etc/systemd/system/serverbond-agent.service <<EOF
@@ -255,60 +291,60 @@ LimitNPROC=32768
 # Logging
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=serverbond-agent
+Syslog_infoIdentifier=serverbond-agent
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
 # Systemd daemon'ı reload et
-log "Systemd daemon reload ediliyor..."
+log_info "Systemd daemon reload ediliyor..."
 systemctl daemon-reload
 
 # Servisi enable et
-log "Servis enable ediliyor..."
+log_info "Servis enable ediliyor..."
 systemctl enable serverbond-agent
 
 # Servisi başlat
-log "Servis başlatılıyor..."
+log_info "Servis başlatılıyor..."
 systemctl start serverbond-agent
 
 # Servis durumunu kontrol et
-log "Servis durumu kontrol ediliyor..."
+log_info "Servis durumu kontrol ediliyor..."
 sleep 3
 
 if systemctl is-active --quiet serverbond-agent; then
     success "ServerBond Agent başarıyla başlatıldı ✅"
     
     # Servis durumunu göster
-    log "Servis durumu:"
+    log_info "Servis durumu:"
     systemctl status serverbond-agent --no-pager -l
     
     # Log'ları göster (son 10 satır)
-    log "Son log'lar:"
+    log_info "Son log_info'lar:"
     journalctl -u serverbond-agent --no-pager -n 10
 else
     error "ServerBond Agent başlatılamadı ❌"
-    log "Hata detayları:"
+    log_info "Hata detayları:"
     systemctl status serverbond-agent --no-pager -l
-    log "Log'lar:"
+    log_info "Log'lar:"
     journalctl -u serverbond-agent --no-pager -n 20
     exit 1
 fi
 
 # HTTP health check
-log "HTTP health check yapılıyor..."
+log_info "HTTP health check yapılıyor..."
 sleep 2
 if curl -s http://localhost:${AGENT_PORT}/health >/dev/null; then
     success "Agent HTTP endpoint aktif! ✅"
-    log "Agent URL: http://$(hostname -I | awk '{print $1}'):${AGENT_PORT}"
+    log_info "Agent URL: http://$(hostname -I | awk '{print $1}'):${AGENT_PORT}"
 else
     error "Agent HTTP endpoint yanıt vermiyor ❌"
-    log "Port ${AGENT_PORT} kontrol ediliyor..."
+    log_info "Port ${AGENT_PORT} kontrol ediliyor..."
     if netstat -tlnp | grep -q ":${AGENT_PORT} "; then
-        log "Port ${AGENT_PORT} dinleniyor ama health check başarısız"
+        log_info "Port ${AGENT_PORT} dinleniyor ama health check başarısız"
     else
-        log "Port ${AGENT_PORT} dinlenmiyor"
+        log_info "Port ${AGENT_PORT} dinlenmiyor"
     fi
 fi
 
