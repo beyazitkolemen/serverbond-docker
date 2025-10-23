@@ -55,7 +55,13 @@ fi
 log_info "Sistem güncelleniyor..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq ca-certificates curl git jq lsb-release ufw openssl > /dev/null
+apt-get install -y -qq ca-certificates curl git jq lsb-release ufw openssl systemd > /dev/null
+
+# Systemd kontrolü
+if ! command -v systemctl >/dev/null 2>&1; then
+  log_info "Systemd kuruluyor..."
+  apt-get install -y -qq systemd systemd-sysv > /dev/null
+fi
 
 # === 3️⃣ Docker kurulumu ===
 if ! command -v docker >/dev/null 2>&1; then
@@ -384,37 +390,69 @@ EOF
 
 # Systemd daemon'ı reload et
 log_info "Systemd daemon reload ediliyor..."
-systemctl daemon-reload
+if command -v systemctl >/dev/null 2>&1; then
+  systemctl daemon-reload
+else
+  log_info "Systemctl bulunamadı, servis manuel olarak başlatılacak"
+fi
 
 # Servisi enable et
 log_info "Servis enable ediliyor..."
-systemctl enable serverbond-agent
+if command -v systemctl >/dev/null 2>&1; then
+  systemctl enable serverbond-agent
+else
+  log_info "Systemctl bulunamadı, servis manuel olarak enable edilecek"
+fi
 
 # Servisi başlat
 log_info "Servis başlatılıyor..."
-systemctl start serverbond-agent
+if command -v systemctl >/dev/null 2>&1; then
+  systemctl start serverbond-agent
+else
+  log_info "Systemctl bulunamadı, servis manuel olarak başlatılacak"
+  # Manuel olarak servisi başlat
+  nohup python3 /opt/serverbond-agent/agent.py > /var/log/serverbond-agent.log 2>&1 &
+  echo $! > /var/run/serverbond-agent.pid
+fi
 
 # Servis durumunu kontrol et
 log_info "Servis durumu kontrol ediliyor..."
 sleep 3
 
-if systemctl is-active --quiet serverbond-agent; then
-    success "ServerBond Agent başarıyla başlatıldı ✅"
-    
-    # Servis durumunu göster
-    log_info "Servis durumu:"
-    systemctl status serverbond-agent --no-pager -l
-    
-    # Log'ları göster (son 10 satır)
-    log_info "Son log'lar:"
-    journalctl -u serverbond-agent --no-pager -n 10
+if command -v systemctl >/dev/null 2>&1; then
+  if systemctl is-active --quiet serverbond-agent; then
+      success "ServerBond Agent başarıyla başlatıldı ✅"
+      
+      # Servis durumunu göster
+      log_info "Servis durumu:"
+      systemctl status serverbond-agent --no-pager -l
+      
+      # Log'ları göster (son 10 satır)
+      log_info "Son log'lar:"
+      journalctl -u serverbond-agent --no-pager -n 10
+  else
+      error "ServerBond Agent başlatılamadı ❌"
+      log_info "Hata detayları:"
+      systemctl status serverbond-agent --no-pager -l
+      log_info "Log'lar:"
+      journalctl -u serverbond-agent --no-pager -n 20
+      exit 1
+  fi
 else
-    error "ServerBond Agent başlatılamadı ❌"
-    log_info "Hata detayları:"
-    systemctl status serverbond-agent --no-pager -l
-    log_info "Log'lar:"
-    journalctl -u serverbond-agent --no-pager -n 20
-    exit 1
+  # Manuel başlatma durumu
+  if [ -f "/var/run/serverbond-agent.pid" ] && kill -0 $(cat /var/run/serverbond-agent.pid) 2>/dev/null; then
+      success "ServerBond Agent başarıyla başlatıldı ✅ (Manuel)"
+      log_info "PID: $(cat /var/run/serverbond-agent.pid)"
+      log_info "Log dosyası: /var/log/serverbond-agent.log"
+  else
+      error "ServerBond Agent başlatılamadı ❌"
+      log_info "Log dosyası: /var/log/serverbond-agent.log"
+      if [ -f "/var/log/serverbond-agent.log" ]; then
+          log_info "Son log'lar:"
+          tail -20 /var/log/serverbond-agent.log
+      fi
+      exit 1
+  fi
 fi
 
 # HTTP health check
