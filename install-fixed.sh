@@ -102,19 +102,19 @@ mkdir -p "${BASE_DIR}" "${SITES_DIR}" "${SHARED_DIR}"/{data,backups,logs}
 
 # === 6.5️⃣ Python ortamı (jinja2 için gerekli) ===
 log_info "Python ortamı hazırlanıyor..."
-apt-get install -y python3 python3-pip python3-venv > /dev/null
+apt-get install -y python3 python3-pip python3-venv python3-full > /dev/null
 
 # Requirements dosyasını indir
 curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/requirements.txt -o "/tmp/requirements.txt"
 
-# Python paketlerini yükle
+# Python paketlerini yükle (externally managed environment için)
 log_info "Python paketleri yükleniyor..."
-pip3 install -r /tmp/requirements.txt > /dev/null
+pip3 install --break-system-packages -r /tmp/requirements.txt > /dev/null
 
 # Jinja2'nin yüklendiğini kontrol et
 if ! python3 -c "import jinja2" >/dev/null 2>&1; then
   log_info "Jinja2 manuel olarak yükleniyor..."
-  pip3 install jinja2 > /dev/null
+  pip3 install --break-system-packages jinja2 > /dev/null
 fi
 
 # === 7️⃣ Base sistem kurulumu ===
