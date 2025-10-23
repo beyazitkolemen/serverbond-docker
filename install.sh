@@ -149,7 +149,10 @@ cd "$SHARED_DIR"
 if docker ps --format "table {{.Names}}" | grep -q "shared_mysql\\|shared_redis\\|traefik"; then
     log "Base services already running"
 else
-    docker-compose up -d
+    # Start services manually
+    docker run -d --name shared_mysql --network $NETWORK -e MYSQL_ROOT_PASSWORD=$MYSQL_ROOT_PASS -e MYSQL_DATABASE=shared_db -p 3306:3306 mysql:8.0
+    docker run -d --name shared_redis --network $NETWORK -p 6379:6379 redis:7-alpine
+    docker run -d --name traefik --network $NETWORK -p 80:80 -p 443:443 -p 8080:8080 -v /var/run/docker.sock:/var/run/docker.sock:ro traefik:v3.0 --api.dashboard=true --api.insecure=true --providers.docker=true --providers.docker.exposedbydefault=false --entrypoints.web.address=:80 --entrypoints.websecure.address=:443
     success "Base services started"
 fi
 
