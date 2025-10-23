@@ -24,9 +24,9 @@ if [[ -f "${MYSQL_ROOT_PASS_FILE}" ]]; then
   log "Mevcut MySQL root şifresi kullanılıyor"
 else
   MYSQL_ROOT_PASS="$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)"
-  mkdir -p "${CONFIG_DIR}"
-  echo "${MYSQL_ROOT_PASS}" > "${MYSQL_ROOT_PASS_FILE}"
-  chmod 600 "${MYSQL_ROOT_PASS_FILE}"
+  mkdir -p "${CONFIG_DIR}" 2>/dev/null || true
+  echo "${MYSQL_ROOT_PASS}" > "${MYSQL_ROOT_PASS_FILE}" 2>/dev/null || true
+  chmod 600 "${MYSQL_ROOT_PASS_FILE}" 2>/dev/null || true
   log "Yeni MySQL root şifresi oluşturuldu ve kaydedildi"
 fi
 
