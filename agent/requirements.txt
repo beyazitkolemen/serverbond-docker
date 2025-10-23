@@ -13,7 +13,7 @@ aiofiles==23.2.1
 python-multipart==0.0.6
 
 # Production monitoring
-psutil==5.9.6
+psutil>=5.9.0
 
 # Security
 cryptography==41.0.7
