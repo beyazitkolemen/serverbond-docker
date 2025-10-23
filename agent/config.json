@@ -16,6 +16,16 @@
     "shared_mysql_container": "shared_mysql",
     "shared_redis_container": "shared_redis"
   },
+  "base_system": {
+    "traefik_email": "admin@serverbond.dev",
+    "phpmyadmin_domain": "pma.serverbond.dev",
+    "mysql_root_password_file": "/opt/serverbond-config/mysql_root_password.txt",
+    "shared_services_dir": "/opt/shared-services",
+    "letsencrypt_dir": "/opt/shared-services/letsencrypt",
+    "mysql_data_dir": "/opt/shared-services/data/mysql",
+    "redis_data_dir": "/opt/shared-services/data/redis",
+    "backups_dir": "/opt/shared-services/backups"
+  },
   "github": {
     "agent_url": "https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/agent.py",
     "templates_url": "https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/templates"
@@ -45,6 +55,33 @@
     "node_version": "20",
     "mysql_charset": "utf8mb4",
     "mysql_collation": "utf8mb4_unicode_ci"
+  },
+  "php_versions": {
+    "8.0": {
+      "image": "php:8.0-fpm-alpine",
+      "extensions": ["pdo_mysql", "mbstring", "zip", "exif", "pcntl", "gd", "intl", "opcache", "bcmath"],
+      "description": "Legacy support for old Laravel projects"
+    },
+    "8.1": {
+      "image": "php:8.1-fpm-alpine",
+      "extensions": ["pdo_mysql", "mbstring", "zip", "exif", "pcntl", "gd", "intl", "opcache", "bcmath"],
+      "description": "Stable version for production"
+    },
+    "8.2": {
+      "image": "php:8.2-fpm-alpine",
+      "extensions": ["pdo_mysql", "mbstring", "zip", "exif", "pcntl", "gd", "intl", "opcache", "bcmath"],
+      "description": "Stable version with latest features"
+    },
+    "8.3": {
+      "image": "php:8.3-fpm-alpine",
+      "extensions": ["pdo_mysql", "mbstring", "zip", "exif", "pcntl", "gd", "intl", "opcache", "bcmath"],
+      "description": "Recommended version (default)"
+    },
+    "8.4": {
+      "image": "php:8.4-fpm-alpine",
+      "extensions": ["pdo_mysql", "mbstring", "zip", "exif", "pcntl", "gd", "intl", "opcache", "bcmath"],
+      "description": "Latest version with cutting-edge features"
+    }
   },
   "timeouts": {
     "docker_inspect": 10,

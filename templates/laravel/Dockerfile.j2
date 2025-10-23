@@ -1,5 +1,5 @@
 # Laravel Dockerfile Template
-FROM php:8.3-fpm-alpine
+FROM {{ php_image }}
 
 # Sistem paketlerini yükle
 RUN apk add --no-cache \
@@ -25,15 +25,9 @@ RUN apk add --no-cache \
 # PHP extension'larını yükle
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j$(nproc) \
-        pdo_mysql \
-        mbstring \
-        zip \
-        exif \
-        pcntl \
-        gd \
-        intl \
-        opcache \
-        bcmath
+{% for extension in php_extensions %}
+        {{ extension }} \
+{% endfor %}
 
 # Composer'ı yükle
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer

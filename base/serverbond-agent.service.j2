@@ -1,0 +1,25 @@
+[Unit]
+Description={{ agent_name }} (Docker Multi-site)
+After=network-online.target docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 {{ agent_dir }}/agent.py
+WorkingDirectory={{ agent_dir }}
+Restart=always
+RestartSec=3
+User=root
+Group=root
+Environment=SB_BASE_DIR={{ base_dir }}
+Environment=SB_TEMPLATE_DIR={{ template_dir }}
+Environment=SB_NETWORK={{ network }}
+Environment=SB_CONFIG_DIR={{ config_dir }}
+Environment=SB_SHARED_MYSQL_CONTAINER={{ shared_mysql_container }}
+Environment=SB_SHARED_REDIS_CONTAINER={{ shared_redis_container }}
+Environment=SB_AGENT_TOKEN={{ agent_token }}
+Environment=SB_AGENT_PORT={{ agent_port }}
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

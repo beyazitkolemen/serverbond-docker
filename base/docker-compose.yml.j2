@@ -1,0 +1,64 @@
+version: '3.9'
+services:
+  traefik:
+    image: traefik:v3.0
+    container_name: traefik
+    restart: always
+    command:
+      - "--api.dashboard=true"
+      - "--api.insecure=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--certificatesresolvers.mytls.acme.tlschallenge=true"
+      - "--certificatesresolvers.mytls.acme.email={{ traefik_email }}"
+      - "--certificatesresolvers.mytls.acme.storage=/letsencrypt/acme.json"
+      - "--accesslog=true"
+      - "--log.level=INFO"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./letsencrypt:/letsencrypt
+    networks:
+      - {{ network }}
+
+  mysql:
+    image: mysql:8.4
+    container_name: {{ shared_mysql_container }}
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: {{ mysql_root_password }}
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+      - ./backups:/backups
+    networks: [{{ network }}]
+
+  redis:
+    image: redis:7
+    container_name: {{ shared_redis_container }}
+    restart: always
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - ./data/redis:/data
+    networks: [{{ network }}]
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: phpmyadmin
+    environment:
+      PMA_HOST: {{ shared_mysql_container }}
+      PMA_USER: root
+      PMA_PASSWORD: {{ mysql_root_password }}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.pma.rule=Host(`{{ phpmyadmin_domain }}`)"
+      - "traefik.http.routers.pma.entrypoints=websecure"
+      - "traefik.http.routers.pma.tls.certresolver=mytls"
+    networks: [{{ network }}]
+
+networks:
+  {{ network }}:
+    external: true

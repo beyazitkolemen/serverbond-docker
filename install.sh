@@ -63,77 +63,59 @@ docker network create "${NETWORK}" || true
 # === 6️⃣ Dizin yapısı ===
 mkdir -p "${BASE_DIR}" "${SITES_DIR}" "${SHARED_DIR}"/{data,backups,logs}
 
-# === 7️⃣ Traefik kurulumu ===
-log "Traefik reverse proxy yapılandırılıyor..."
-cat > "${SHARED_DIR}/docker-compose.yml" <<EOF
-version: '3.9'
-services:
-  traefik:
-    image: traefik:v3.0
-    container_name: traefik
-    restart: always
-    command:
-      - "--api.dashboard=true"
-      - "--api.insecure=false"
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.websecure.address=:443"
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--certificatesresolvers.mytls.acme.tlschallenge=true"
-      - "--certificatesresolvers.mytls.acme.email=admin@serverbond.dev"
-      - "--certificatesresolvers.mytls.acme.storage=/letsencrypt/acme.json"
-      - "--accesslog=true"
-      - "--log.level=INFO"
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./letsencrypt:/letsencrypt
-    networks:
-      - ${NETWORK}
+# === 7️⃣ Base sistem kurulumu ===
+log "Base sistem yapılandırılıyor..."
+# Base sistem template'ini render et ve kur
+python3 -c "
+import json
+from jinja2 import Environment, FileSystemLoader
+from pathlib import Path
 
-  mysql:
-    image: mysql:8.4
-    container_name: shared_mysql
-    restart: always
-    environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASS}
-    volumes:
-      - ./data/mysql:/var/lib/mysql
-      - ./backups:/backups
-    networks: [${NETWORK}]
+# Config'i yükle
+config_path = Path('/opt/serverbond-agent/config.json')
+if config_path.exists():
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+else:
+    config = {
+        'base_system': {
+            'traefik_email': 'admin@serverbond.dev',
+            'phpmyadmin_domain': 'pma.serverbond.dev'
+        },
+        'docker': {
+            'network': 'shared_net',
+            'shared_mysql_container': 'shared_mysql',
+            'shared_redis_container': 'shared_redis'
+        }
+    }
 
-  redis:
-    image: redis:7
-    container_name: shared_redis
-    restart: always
-    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
-    volumes:
-      - ./data/redis:/data
-    networks: [${NETWORK}]
+# Base sistem context'i hazırla
+base_ctx = {
+    'network': config['docker']['network'],
+    'shared_mysql_container': config['docker']['shared_mysql_container'],
+    'shared_redis_container': config['docker']['shared_redis_container'],
+    'traefik_email': config['base_system']['traefik_email'],
+    'phpmyadmin_domain': config['base_system']['phpmyadmin_domain'],
+    'mysql_root_password': '${MYSQL_ROOT_PASS}'
+}
 
-  phpmyadmin:
-    image: phpmyadmin:latest
-    container_name: phpmyadmin
-    environment:
-      PMA_HOST: shared_mysql
-      PMA_USER: root
-      PMA_PASSWORD: ${MYSQL_ROOT_PASS}
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.pma.rule=Host(\`pma.serverbond.dev\`)"
-      - "traefik.http.routers.pma.entrypoints=websecure"
-      - "traefik.http.routers.pma.tls.certresolver=mytls"
-    networks: [${NETWORK}]
-
-networks:
-  ${NETWORK}:
-    external: true
-EOF
+# Base sistem docker-compose.yml'yi render et
+base_template_path = Path('/opt/serverbond-agent/base')
+if (base_template_path / 'docker-compose.yml.j2').exists():
+    env = Environment(loader=FileSystemLoader(str(base_template_path)))
+    template = env.get_template('docker-compose.yml.j2')
+    content = template.render(base_ctx)
+    
+    # Docker-compose dosyasını yaz
+    with open('${SHARED_DIR}/docker-compose.yml', 'w') as f:
+        f.write(content)
+    print('Base system template rendered successfully')
+else:
+    print('Base system template not found, using fallback')
+"
 
 docker compose -f "${SHARED_DIR}/docker-compose.yml" up -d
-success "Traefik ve shared servisler aktif."
+success "Base sistem aktif."
 
 # === 8️⃣ Agent kurulumu ===
 log "ServerBond Agent kuruluyor..."
@@ -144,12 +126,25 @@ fi
 # Config dosyasını indir
 curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/config.json -o "/opt/serverbond-agent/config.json"
 
+# Agent modules dizinini oluştur
+mkdir -p "/opt/serverbond-agent/modules"
+
+# Agent modules dosyalarını indir
+curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/__init__.py -o "/opt/serverbond-agent/modules/__init__.py"
+curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/config.py -o "/opt/serverbond-agent/modules/config.py"
+curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/utils.py -o "/opt/serverbond-agent/modules/utils.py"
+curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/templates.py -o "/opt/serverbond-agent/modules/templates.py"
+curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/api.py -o "/opt/serverbond-agent/modules/api.py"
+curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/base_system.py -o "/opt/serverbond-agent/modules/base_system.py"
+curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/site_builder.py -o "/opt/serverbond-agent/modules/site_builder.py"
+
 # Agent dosyasını çalıştırılabilir yap
 chmod +x "/opt/serverbond-agent/agent.py"
 
 # === 8️⃣ Template'leri indir ===
 log "Template'ler indiriliyor..."
 mkdir -p "/opt/serverbond-agent/templates"
+mkdir -p "/opt/serverbond-agent/base"
 
 # Template dosyalarını GitHub'dan indir
 TEMPLATE_URL="https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/templates"
@@ -194,6 +189,10 @@ curl -fsSL "${TEMPLATE_URL}/static/Dockerfile.j2" -o "/opt/serverbond-agent/temp
 curl -fsSL "${TEMPLATE_URL}/static/nginx.conf.j2" -o "/opt/serverbond-agent/templates/static/nginx.conf.j2"
 curl -fsSL "${TEMPLATE_URL}/static/index.html.j2" -o "/opt/serverbond-agent/templates/static/index.html.j2"
 
+# Base sistem template'lerini indir
+curl -fsSL "https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/base/docker-compose.yml.j2" -o "/opt/serverbond-agent/base/docker-compose.yml.j2"
+curl -fsSL "https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/base/serverbond-agent.service.j2" -o "/opt/serverbond-agent/base/serverbond-agent.service.j2"
+
 success "Template'ler başarıyla indirildi."
 
 # === 9️⃣ Python ortamı ===
@@ -202,8 +201,65 @@ pip3 install fastapi uvicorn jinja2 pydantic aiofiles > /dev/null
 
 # === 🔟 systemd servisi ===
 log "systemd servisi oluşturuluyor..."
-cat > /etc/systemd/system/serverbond-agent.service <<EOF
-[Unit]
+# Systemd servis template'ini render et
+python3 -c "
+import json
+from jinja2 import Environment, FileSystemLoader
+from pathlib import Path
+
+# Config'i yükle
+config_path = Path('/opt/serverbond-agent/config.json')
+if config_path.exists():
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+else:
+    config = {
+        'agent': {
+            'name': 'ServerBond Agent',
+            'port': 8000
+        },
+        'paths': {
+            'agent_dir': '/opt/serverbond-agent',
+            'base_dir': '${SITES_DIR}',
+            'template_dir': '/opt/serverbond-agent/templates',
+            'config_dir': '${CONFIG_DIR}'
+        },
+        'docker': {
+            'network': '${NETWORK}',
+            'shared_mysql_container': 'shared_mysql',
+            'shared_redis_container': 'shared_redis'
+        }
+    }
+
+# Systemd servis context'i hazırla
+service_ctx = {
+    'agent_name': config['agent']['name'],
+    'agent_dir': config['paths']['agent_dir'],
+    'base_dir': config['paths']['base_dir'],
+    'template_dir': config['paths']['template_dir'],
+    'network': config['docker']['network'],
+    'config_dir': config['paths']['config_dir'],
+    'shared_mysql_container': config['docker']['shared_mysql_container'],
+    'shared_redis_container': config['docker']['shared_redis_container'],
+    'agent_token': '${AGENT_TOKEN}',
+    'agent_port': config['agent']['port']
+}
+
+# Systemd servis template'ini render et
+service_template_path = Path('/opt/serverbond-agent/base')
+if (service_template_path / 'serverbond-agent.service.j2').exists():
+    env = Environment(loader=FileSystemLoader(str(service_template_path)))
+    template = env.get_template('serverbond-agent.service.j2')
+    content = template.render(service_ctx)
+    
+    # Systemd servis dosyasını yaz
+    with open('/etc/systemd/system/serverbond-agent.service', 'w') as f:
+        f.write(content)
+    print('Systemd service template rendered successfully')
+else:
+    print('Systemd service template not found, using fallback')
+    # Fallback systemd servis dosyası
+    fallback_content = '''[Unit]
 Description=ServerBond Agent (Docker Multi-site)
 After=network-online.target docker.service
 Wants=docker.service
@@ -227,8 +283,12 @@ Environment=SB_AGENT_PORT=${AGENT_PORT}
 Environment=PYTHONUNBUFFERED=1
 
 [Install]
-WantedBy=multi-user.target
-EOF
+WantedBy=multi-user.target'''
+    
+    with open('/etc/systemd/system/serverbond-agent.service', 'w') as f:
+        f.write(fallback_content)
+    print('Fallback systemd service created')
+"
 
 systemctl daemon-reload
 systemctl enable --now serverbond-agent
