@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# === UTILITY FUNCTIONS ===
+log() { echo -e "\033[1;36m[INFO]\033[0m $*"; }
+success() { echo -e "\033[1;32m[SUCCESS]\033[0m $*"; }
+error() { echo -e "\033[1;31m[ERROR]\033[0m $*" >&2; exit 1; }
+
 # === GLOBAL CONFIG ===
 AGENT_VERSION="3.0"
 BASE_DIR="/opt/serverbond-agent"
@@ -24,10 +29,6 @@ else
   chmod 600 "${MYSQL_ROOT_PASS_FILE}"
   log "Yeni MySQL root şifresi oluşturuldu ve kaydedildi"
 fi
-
-log() { echo -e "\033[1;36m[INFO]\033[0m $*"; }
-success() { echo -e "\033[1;32m[SUCCESS]\033[0m $*"; }
-error() { echo -e "\033[1;31m[ERROR]\033[0m $*" >&2; exit 1; }
 
 # === 1️⃣ Root check ===
 if [[ $EUID -ne 0 ]]; then
