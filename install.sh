@@ -170,6 +170,82 @@ if (base_template_path / 'docker-compose.yml.j2').exists():
     print('Base system template rendered successfully')
 else:
     print('Base system template not found, using fallback')
+    # Fallback: Basit bir docker-compose.yml oluştur
+    fallback_content = '''version: '3.8'
+services:
+  shared_mysql:
+    image: mysql:8.0
+    container_name: shared_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${mysql_root_password}
+      MYSQL_DATABASE: shared_db
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - ${network}
+    ports:
+      - "3306:3306"
+
+  shared_redis:
+    image: redis:7-alpine
+    container_name: shared_redis
+    restart: unless-stopped
+    networks:
+      - ${network}
+    ports:
+      - "6379:6379"
+
+  traefik:
+    image: traefik:v3.0
+    container_name: traefik
+    restart: unless-stopped
+    command:
+      - --api.dashboard=true
+      - --api.insecure=true
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.letsencrypt.acme.email=${traefik_email}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_data:/letsencrypt
+    networks:
+      - ${network}
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: phpmyadmin
+    restart: unless-stopped
+    environment:
+      PMA_HOST: shared_mysql
+      PMA_PORT: 3306
+    networks:
+      - ${network}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.phpmyadmin.rule=Host(\`${phpmyadmin_domain}\`)"
+      - "traefik.http.routers.phpmyadmin.tls=true"
+      - "traefik.http.routers.phpmyadmin.tls.certresolver=letsencrypt"
+
+volumes:
+  mysql_data:
+  traefik_data:
+
+networks:
+  ${network}:
+    external: true
+'''
+    with open('${SHARED_DIR}/docker-compose.yml', 'w') as f:
+        f.write(fallback_content)
+    print('Fallback docker-compose.yml created successfully')
 "
 
 docker compose -f "${SHARED_DIR}/docker-compose.yml" up -d
