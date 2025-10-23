@@ -372,23 +372,17 @@ log_info "systemd servisi oluşturuluyor..."
 # Systemd servis dosyasını oluştur
 cat > /etc/systemd/system/serverbond-agent.service <<EOF
 [Unit]
-Description=ServerBond Agent (Docker Multi-site)
-Documentation=https://github.com/beyazitkolemen/serverbond-docker
-After=network-online.target docker.service
-Wants=docker.service
+Description=ServerBond Agent
+After=docker.service
 Requires=docker.service
 
 [Service]
 Type=simple
 User=root
-Group=root
 WorkingDirectory=/opt/serverbond-agent
 ExecStart=/usr/bin/python3 /opt/serverbond-agent/agent.py
-ExecReload=/bin/kill -HUP \$MAINPID
 Restart=always
-RestartSec=3
-StartLimitBurst=5
-StartLimitInterval=60s
+RestartSec=5
 
 # Environment variables
 Environment=SB_BASE_DIR=${SITES_DIR}
@@ -401,22 +395,6 @@ Environment=SB_AGENT_TOKEN=${AGENT_TOKEN}
 Environment=SB_AGENT_PORT=${AGENT_PORT}
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=/opt/serverbond-agent
-
-# Security settings
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=/opt/serverbond-agent /opt/sites /opt/shared-services /var/lib/docker
-
-# Resource limits
-LimitNOFILE=65536
-LimitNPROC=32768
-
-# Logging
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=serverbond-agent
 
 [Install]
 WantedBy=multi-user.target
