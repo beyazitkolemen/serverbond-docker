@@ -271,29 +271,49 @@ success "Base sistem aktif."
 
 # === 8️⃣ Agent kurulumu ===
 log_info "ServerBond Agent kuruluyor..."
-if [[ ! -f "/opt/serverbond-agent/agent.py" ]]; then
-  curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/agent.py -o "/opt/serverbond-agent/agent.py"
+
+# Agent dosyalarını git clone ile kopyala
+if [ -f "/tmp/serverbond-docker/agent/agent.py" ]; then
+    cp /tmp/serverbond-docker/agent/agent.py /opt/serverbond-agent/agent.py
+    log_info "Agent.py kopyalandı"
+else
+    log_info "Agent.py bulunamadı, curl ile indiriliyor..."
+    curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/agent.py -o "/opt/serverbond-agent/agent.py"
 fi
 
-# Config dosyasını indir
-curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/config.json -o "/opt/serverbond-agent/config.json"
+# Config dosyasını kopyala
+if [ -f "/tmp/serverbond-docker/agent/config.json" ]; then
+    cp /tmp/serverbond-docker/agent/config.json /opt/serverbond-agent/config.json
+    log_info "Config.json kopyalandı"
+else
+    log_info "Config.json bulunamadı, curl ile indiriliyor..."
+    curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/config.json -o "/opt/serverbond-agent/config.json"
+fi
 
 # Agent modules dizinini oluştur
 mkdir -p "/opt/serverbond-agent/modules"
 
-# Agent modules dosyalarını indir
-curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/__init__.py -o "/opt/serverbond-agent/modules/__init__.py"
-curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/config.py -o "/opt/serverbond-agent/modules/config.py"
-curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/utils.py -o "/opt/serverbond-agent/modules/utils.py"
-curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/templates.py -o "/opt/serverbond-agent/modules/templates.py"
-curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/api.py -o "/opt/serverbond-agent/modules/api.py"
-curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/base_system.py -o "/opt/serverbond-agent/modules/base_system.py"
-curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/site_builder.py -o "/opt/serverbond-agent/modules/site_builder.py"
-curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/logger.py -o "/opt/serverbond-agent/modules/logger.py"
-curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/backup.py -o "/opt/serverbond-agent/modules/backup.py"
-curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/cache.py -o "/opt/serverbond-agent/modules/cache.py"
-curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/monitoring.py -o "/opt/serverbond-agent/modules/monitoring.py"
-curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/security.py -o "/opt/serverbond-agent/modules/security.py"
+# Agent modules dosyalarını git clone ile kopyala
+log_info "Agent modules kopyalanıyor..."
+if [ -d "/tmp/serverbond-docker/agent/modules" ]; then
+    cp -r /tmp/serverbond-docker/agent/modules/* /opt/serverbond-agent/modules/
+    log_info "Agent modules başarıyla kopyalandı"
+else
+    log_info "Agent modules dizini bulunamadı, curl ile indiriliyor..."
+    # Fallback: curl ile indir
+    curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/__init__.py -o "/opt/serverbond-agent/modules/__init__.py"
+    curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/config.py -o "/opt/serverbond-agent/modules/config.py"
+    curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/utils.py -o "/opt/serverbond-agent/modules/utils.py"
+    curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/templates.py -o "/opt/serverbond-agent/modules/templates.py"
+    curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/api.py -o "/opt/serverbond-agent/modules/api.py"
+    curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/base_system.py -o "/opt/serverbond-agent/modules/base_system.py"
+    curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/site_builder.py -o "/opt/serverbond-agent/modules/site_builder.py"
+    curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/logger.py -o "/opt/serverbond-agent/modules/logger.py"
+    curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/backup.py -o "/opt/serverbond-agent/modules/backup.py"
+    curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/cache.py -o "/opt/serverbond-agent/modules/cache.py"
+    curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/monitoring.py -o "/opt/serverbond-agent/modules/monitoring.py"
+    curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/security.py -o "/opt/serverbond-agent/modules/security.py"
+fi
 
 # Agent dosyasını çalıştırılabilir yap
 chmod +x "/opt/serverbond-agent/agent.py"
