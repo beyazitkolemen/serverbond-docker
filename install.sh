@@ -135,8 +135,44 @@ mkdir -p /var/log/supervisor
 # Copy supervisor configuration
 cp "$AGENT_DIR/supervisord.conf" /etc/supervisor/conf.d/serverbond-agent.conf
 
+# Create main supervisor configuration if it doesn't exist
+if [ ! -f /etc/supervisor/supervisord.conf ]; then
+    cat > /etc/supervisor/supervisord.conf << 'EOF'
+[unix_http_server]
+file=/tmp/supervisor.sock
+
+[supervisord]
+logfile=/var/log/supervisor/supervisord.log
+logfile_maxbytes=50MB
+logfile_backups=10
+loglevel=info
+pidfile=/tmp/supervisord.pid
+nodaemon=false
+minfds=1024
+minprocs=200
+user=root
+childlogdir=/var/log/supervisor/
+
+[rpcinterface:supervisor]
+supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
+
+[supervisorctl]
+serverurl=unix:///tmp/supervisor.sock
+
+[include]
+files = /etc/supervisor/conf.d/*.conf
+EOF
+fi
+
 # Copy systemd service file
 cp "$AGENT_DIR/serverbond-agent.service" /etc/systemd/system/
+
+# Start supervisor daemon first
+log "Starting supervisor daemon..."
+supervisord -c /etc/supervisor/supervisord.conf
+
+# Wait a moment for supervisor to start
+sleep 2
 
 # Start service with supervisor
 log "Starting agent with supervisor..."
