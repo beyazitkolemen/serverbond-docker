@@ -55,8 +55,9 @@ apt-get install -y -qq \
 # === 4. Install Docker ===
 log "Installing Docker..."
 if ! command -v docker >/dev/null 2>&1; then
-    curl -fsSL https://get.docker.com | sh
-    usermod -aG docker $USER 2>/dev/null || true
+    # Install Docker via apt
+    apt-get install -y -qq docker.io docker-compose
+    systemctl enable docker
 else
     log "Docker already installed"
 fi
@@ -67,6 +68,8 @@ if ! docker info >/dev/null 2>&1; then
     systemctl start docker 2>/dev/null || service docker start 2>/dev/null || true
     sleep 3
 fi
+
+# Docker group management removed for simplicity
 
 # === 5. Install Python Dependencies ===
 log "Installing Python dependencies..."
