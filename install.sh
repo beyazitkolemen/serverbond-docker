@@ -174,49 +174,34 @@ else
     success "Base services started"
 fi
 
-# === 11. Create Systemd Service ===
-log "Creating systemd service..."
-cat > /etc/systemd/system/serverbond-agent.service << EOF
-[Unit]
-Description=ServerBond Agent
-After=docker.service
-Requires=docker.service
+# === 11. Start Agent ===
+log "Starting agent..."
 
-[Service]
-Type=simple
-User=root
-WorkingDirectory=$AGENT_DIR
-ExecStart=/usr/bin/python3 $AGENT_DIR/agent.py
-Restart=always
-RestartSec=5
+# Set environment variables
+export SB_BASE_DIR=$SITES_DIR
+export SB_TEMPLATE_DIR=$AGENT_DIR/templates
+export SB_NETWORK=$NETWORK
+export SB_CONFIG_DIR=/opt/serverbond-config
+export SB_SHARED_MYSQL_CONTAINER=shared_mysql
+export SB_SHARED_REDIS_CONTAINER=shared_redis
+export SB_AGENT_TOKEN=$AGENT_TOKEN
+export SB_AGENT_PORT=$AGENT_PORT
+export PYTHONUNBUFFERED=1
+export PYTHONPATH=$AGENT_DIR
 
-Environment=SB_BASE_DIR=$SITES_DIR
-Environment=SB_TEMPLATE_DIR=$AGENT_DIR/templates
-Environment=SB_NETWORK=$NETWORK
-Environment=SB_CONFIG_DIR=/opt/serverbond-config
-Environment=SB_SHARED_MYSQL_CONTAINER=shared_mysql
-Environment=SB_SHARED_REDIS_CONTAINER=shared_redis
-Environment=SB_AGENT_TOKEN=$AGENT_TOKEN
-Environment=SB_AGENT_PORT=$AGENT_PORT
-Environment=PYTHONUNBUFFERED=1
-Environment=PYTHONPATH=$AGENT_DIR
+# Start agent in background
+cd $AGENT_DIR
+nohup python3 agent.py > /var/log/serverbond-agent.log 2>&1 &
+AGENT_PID=$!
+echo $AGENT_PID > /var/run/serverbond-agent.pid
 
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# === 12. Start Agent Service ===
-log "Starting agent service..."
-systemctl daemon-reload
-systemctl enable serverbond-agent
-systemctl start serverbond-agent
-
-# === 13. Health Check ===
+# === 12. Health Check ===
 log "Performing health check..."
 sleep 5
 
-if systemctl is-active --quiet serverbond-agent; then
-    success "ServerBond Agent is running!"
+# Check if agent is running
+if kill -0 $AGENT_PID 2>/dev/null; then
+    success "ServerBond Agent is running! (PID: $AGENT_PID)"
     
     # Test HTTP endpoint
     if curl -s http://localhost:$AGENT_PORT/health >/dev/null 2>&1; then
@@ -226,15 +211,16 @@ if systemctl is-active --quiet serverbond-agent; then
         warn "Agent HTTP endpoint not responding"
     fi
     
-    # Show service status
-    log "Service status:"
-    systemctl status serverbond-agent --no-pager -l
+    # Show agent info
+    log "Agent PID: $AGENT_PID"
+    log "Log file: /var/log/serverbond-agent.log"
     
 else
     error "Failed to start ServerBond Agent"
+    log "Check logs: tail -f /var/log/serverbond-agent.log"
 fi
 
-# === 14. Final Information ===
+# === 13. Final Information ===
 success "ServerBond Agent installation completed!"
 log "Agent is running on port $AGENT_PORT"
 log "Base services: MySQL (3306), Redis (6379), Traefik (80/443/8080)"
@@ -246,4 +232,6 @@ echo
 log "Next steps:"
 log "1. Access Traefik dashboard: http://$(hostname -I | awk '{print $1}'):8080"
 log "2. Create your first site using the agent API"
-log "3. Check agent logs: journalctl -u serverbond-agent -f"
+log "3. Check agent logs: tail -f /var/log/serverbond-agent.log"
+log "4. Stop agent: kill \$(cat /var/run/serverbond-agent.pid)"
+log "5. Start agent: cd $AGENT_DIR && nohup python3 agent.py > /var/log/serverbond-agent.log 2>&1 &"
