@@ -197,81 +197,38 @@ success "Template'ler başarıyla indirildi."
 
 # === 9️⃣ Python ortamı ===
 apt-get install -y python3 python3-pip > /dev/null
-pip3 install fastapi uvicorn jinja2 pydantic aiofiles > /dev/null
+
+# Requirements dosyasını indir
+curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/requirements.txt -o "/tmp/requirements.txt"
+
+# Python paketlerini yükle
+pip3 install -r /tmp/requirements.txt > /dev/null
 
 # === 🔟 systemd servisi ===
 log "systemd servisi oluşturuluyor..."
-# Systemd servis template'ini render et
-python3 -c "
-import json
-from jinja2 import Environment, FileSystemLoader
-from pathlib import Path
 
-# Config'i yükle
-config_path = Path('/opt/serverbond-agent/config.json')
-if config_path.exists():
-    with open(config_path, 'r') as f:
-        config = json.load(f)
-else:
-    config = {
-        'agent': {
-            'name': 'ServerBond Agent',
-            'port': 8000
-        },
-        'paths': {
-            'agent_dir': '/opt/serverbond-agent',
-            'base_dir': '${SITES_DIR}',
-            'template_dir': '/opt/serverbond-agent/templates',
-            'config_dir': '${CONFIG_DIR}'
-        },
-        'docker': {
-            'network': '${NETWORK}',
-            'shared_mysql_container': 'shared_mysql',
-            'shared_redis_container': 'shared_redis'
-        }
-    }
-
-# Systemd servis context'i hazırla
-service_ctx = {
-    'agent_name': config['agent']['name'],
-    'agent_dir': config['paths']['agent_dir'],
-    'base_dir': config['paths']['base_dir'],
-    'template_dir': config['paths']['template_dir'],
-    'network': config['docker']['network'],
-    'config_dir': config['paths']['config_dir'],
-    'shared_mysql_container': config['docker']['shared_mysql_container'],
-    'shared_redis_container': config['docker']['shared_redis_container'],
-    'agent_token': '${AGENT_TOKEN}',
-    'agent_port': config['agent']['port']
-}
-
-# Systemd servis template'ini render et
-service_template_path = Path('/opt/serverbond-agent/base')
-if (service_template_path / 'serverbond-agent.service.j2').exists():
-    env = Environment(loader=FileSystemLoader(str(service_template_path)))
-    template = env.get_template('serverbond-agent.service.j2')
-    content = template.render(service_ctx)
-    
-    # Systemd servis dosyasını yaz
-    with open('/etc/systemd/system/serverbond-agent.service', 'w') as f:
-        f.write(content)
-    print('Systemd service template rendered successfully')
-else:
-    print('Systemd service template not found, using fallback')
-    # Fallback systemd servis dosyası
-    fallback_content = '''[Unit]
+# Systemd servis dosyasını oluştur
+cat > /etc/systemd/system/serverbond-agent.service <<EOF
+[Unit]
 Description=ServerBond Agent (Docker Multi-site)
+Documentation=https://github.com/beyazitkolemen/serverbond-docker
 After=network-online.target docker.service
 Wants=docker.service
+Requires=docker.service
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 /opt/serverbond-agent/agent.py
-WorkingDirectory=/opt/serverbond-agent
-Restart=always
-RestartSec=3
 User=root
 Group=root
+WorkingDirectory=/opt/serverbond-agent
+ExecStart=/usr/bin/python3 /opt/serverbond-agent/agent.py
+ExecReload=/bin/kill -HUP \$MAINPID
+Restart=always
+RestartSec=3
+StartLimitBurst=5
+StartLimitInterval=60s
+
+# Environment variables
 Environment=SB_BASE_DIR=${SITES_DIR}
 Environment=SB_TEMPLATE_DIR=/opt/serverbond-agent/templates
 Environment=SB_NETWORK=${NETWORK}
@@ -281,25 +238,77 @@ Environment=SB_SHARED_REDIS_CONTAINER=shared_redis
 Environment=SB_AGENT_TOKEN=${AGENT_TOKEN}
 Environment=SB_AGENT_PORT=${AGENT_PORT}
 Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/opt/serverbond-agent
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/serverbond-agent /opt/sites /opt/shared-services /var/lib/docker
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=32768
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=serverbond-agent
 
 [Install]
-WantedBy=multi-user.target'''
-    
-    with open('/etc/systemd/system/serverbond-agent.service', 'w') as f:
-        f.write(fallback_content)
-    print('Fallback systemd service created')
-"
+WantedBy=multi-user.target
+EOF
 
+# Systemd daemon'ı reload et
+log "Systemd daemon reload ediliyor..."
 systemctl daemon-reload
-systemctl enable --now serverbond-agent
 
-success "ServerBond Agent yüklendi."
-log "Agent çalışıyor mu kontrol ediliyor..."
+# Servisi enable et
+log "Servis enable ediliyor..."
+systemctl enable serverbond-agent
+
+# Servisi başlat
+log "Servis başlatılıyor..."
+systemctl start serverbond-agent
+
+# Servis durumunu kontrol et
+log "Servis durumu kontrol ediliyor..."
 sleep 3
-if curl -s http://localhost:8000/health >/dev/null; then
-  success "Agent aktif! ✅"
+
+if systemctl is-active --quiet serverbond-agent; then
+    success "ServerBond Agent başarıyla başlatıldı ✅"
+    
+    # Servis durumunu göster
+    log "Servis durumu:"
+    systemctl status serverbond-agent --no-pager -l
+    
+    # Log'ları göster (son 10 satır)
+    log "Son log'lar:"
+    journalctl -u serverbond-agent --no-pager -n 10
 else
-  error "Agent servisi başlatılamadı. 'journalctl -u serverbond-agent' ile logları kontrol et."
+    error "ServerBond Agent başlatılamadı ❌"
+    log "Hata detayları:"
+    systemctl status serverbond-agent --no-pager -l
+    log "Log'lar:"
+    journalctl -u serverbond-agent --no-pager -n 20
+    exit 1
+fi
+
+# HTTP health check
+log "HTTP health check yapılıyor..."
+sleep 2
+if curl -s http://localhost:${AGENT_PORT}/health >/dev/null; then
+    success "Agent HTTP endpoint aktif! ✅"
+    log "Agent URL: http://$(hostname -I | awk '{print $1}'):${AGENT_PORT}"
+else
+    error "Agent HTTP endpoint yanıt vermiyor ❌"
+    log "Port ${AGENT_PORT} kontrol ediliyor..."
+    if netstat -tlnp | grep -q ":${AGENT_PORT} "; then
+        log "Port ${AGENT_PORT} dinleniyor ama health check başarısız"
+    else
+        log "Port ${AGENT_PORT} dinlenmiyor"
+    fi
 fi
 
 # === 11️⃣ Firewall yapılandırması ===

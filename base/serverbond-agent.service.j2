@@ -1,16 +1,23 @@
 [Unit]
 Description={{ agent_name }} (Docker Multi-site)
+Documentation=https://github.com/beyazitkolemen/serverbond-docker
 After=network-online.target docker.service
 Wants=docker.service
+Requires=docker.service
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 {{ agent_dir }}/agent.py
-WorkingDirectory={{ agent_dir }}
-Restart=always
-RestartSec=3
 User=root
 Group=root
+WorkingDirectory={{ agent_dir }}
+ExecStart=/usr/bin/python3 {{ agent_dir }}/agent.py
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=3
+StartLimitBurst=5
+StartLimitInterval=60s
+
+# Environment variables
 Environment=SB_BASE_DIR={{ base_dir }}
 Environment=SB_TEMPLATE_DIR={{ template_dir }}
 Environment=SB_NETWORK={{ network }}
@@ -20,6 +27,23 @@ Environment=SB_SHARED_REDIS_CONTAINER={{ shared_redis_container }}
 Environment=SB_AGENT_TOKEN={{ agent_token }}
 Environment=SB_AGENT_PORT={{ agent_port }}
 Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH={{ agent_dir }}
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={{ agent_dir }} {{ base_dir }} /opt/shared-services /var/lib/docker
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=32768
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=serverbond-agent
 
 [Install]
 WantedBy=multi-user.target

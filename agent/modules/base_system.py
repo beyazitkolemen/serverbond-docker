@@ -6,7 +6,10 @@ from pathlib import Path
 from datetime import datetime
 from fastapi import HTTPException
 
-from .config import CONFIG
+from .config import load_config
+
+# Load config
+CONFIG = load_config()
 from .utils import get_container_status, write_file, log
 from .templates import render
 

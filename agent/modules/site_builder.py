@@ -9,7 +9,10 @@ from pathlib import Path
 from datetime import datetime
 from fastapi import HTTPException
 
-from .config import CONFIG
+from .config import load_config
+
+# Load config
+CONFIG = load_config()
 from .utils import log, write_file, detect_framework, provision_mysql
 from .templates import render, generate_laravel_env
 

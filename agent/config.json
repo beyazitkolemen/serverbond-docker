@@ -31,24 +31,12 @@
     "templates_url": "https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/templates"
   },
   "frameworks": {
-    "laravel": {
-      "template_files": ["docker-compose.yml.j2", "Dockerfile.j2", "nginx.conf.j2", "supervisord.conf.j2"]
-    },
-    "laravel-inertia": {
-      "template_files": ["docker-compose.yml.j2", "Dockerfile.j2", "nginx.conf.j2", "supervisord.conf.j2"]
-    },
-    "nextjs": {
-      "template_files": ["docker-compose.yml.j2", "Dockerfile.j2", "next.config.js.j2"]
-    },
-    "nodeapi": {
-      "template_files": ["docker-compose.yml.j2", "Dockerfile.j2", "package.json.j2", "tsconfig.json.j2"]
-    },
-    "nuxt": {
-      "template_files": ["docker-compose.yml.j2", "Dockerfile.j2", "nuxt.config.ts.j2"]
-    },
-    "static": {
-      "template_files": ["docker-compose.yml.j2", "Dockerfile.j2", "nginx.conf.j2", "index.html.j2"]
-    }
+    "laravel": ["docker-compose.yml.j2", "Dockerfile.j2", "nginx.conf.j2", "supervisord.conf.j2"],
+    "laravel-inertia": ["docker-compose.yml.j2", "Dockerfile.j2", "nginx.conf.j2", "supervisord.conf.j2"],
+    "nextjs": ["docker-compose.yml.j2", "Dockerfile.j2", "next.config.js.j2"],
+    "nodeapi": ["docker-compose.yml.j2", "Dockerfile.j2", "package.json.j2", "tsconfig.json.j2"],
+    "nuxt": ["docker-compose.yml.j2", "Dockerfile.j2", "nuxt.config.ts.j2"],
+    "static": ["docker-compose.yml.j2", "Dockerfile.j2", "nginx.conf.j2", "index.html.j2"]
   },
   "defaults": {
     "php_version": "8.3",
@@ -88,6 +76,7 @@
     "docker_logs": 30,
     "docker_compose": 60,
     "curl_download": 30,
-    "systemctl": 30
+    "systemctl": 30,
+    "pip_install": 300
   }
 }

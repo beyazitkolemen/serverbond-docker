@@ -282,6 +282,36 @@ curl -X POST http://localhost:8000/systemd/update \
   -H "X-Agent-Token: YOUR_TOKEN"
 ```
 
+### Systemd Servis Özellikleri
+
+- **Güvenlik**: NoNewPrivileges, PrivateTmp, ProtectSystem
+- **Kaynak Limitleri**: NOFILE ve NPROC limitleri
+- **Otomatik Restart**: Hata durumunda otomatik yeniden başlatma
+- **Logging**: Journald entegrasyonu
+- **Dependency Management**: Docker servisine bağımlılık
+- **Resource Protection**: Sadece gerekli dizinlere yazma izni
+
+## 📦 Requirements Yönetimi
+
+Python paketleri requirements.txt dosyası ile yönetilir:
+
+### Requirements Güncelleme
+
+```bash
+# Python paketlerini güncelle
+curl -X POST http://localhost:8000/requirements/update \
+  -H "X-Agent-Token: YOUR_TOKEN"
+```
+
+### Mevcut Paketler
+
+- **FastAPI**: Web framework
+- **Uvicorn**: ASGI server
+- **Jinja2**: Template engine
+- **Pydantic**: Data validation
+- **aiofiles**: Async file operations
+- **python-multipart**: Form data handling
+
 ## 🏗️ Modüler Yapı
 
 Agent.py dosyası modüler yapıya bölünmüştür:

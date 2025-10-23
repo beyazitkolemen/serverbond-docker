@@ -10,9 +10,12 @@ from datetime import datetime
 from fastapi import HTTPException, Header
 from pydantic import BaseModel
 
-from .config import CONFIG
+from .config import load_config
 from .utils import log, write_file, get_container_status, detect_framework, provision_mysql
 from .templates import render, generate_laravel_env
+
+# Load config
+CONFIG = load_config()
 
 # === SCHEMAS ===
 class BuildRequest(BaseModel):
@@ -233,7 +236,7 @@ def update_templates(agent_token: str):
             framework_dir.mkdir(parents=True, exist_ok=True)
             
             # Template dosyalarını config'den al
-            template_files = CONFIG["frameworks"].get(framework, {}).get("template_files", [])
+            template_files = CONFIG["frameworks"].get(framework, [])
             
             for template_file in template_files:
                 url = f"{template_url}/{framework}/{template_file}"
@@ -378,3 +381,33 @@ def get_php_versions(agent_token: str):
         "default_version": CONFIG["defaults"]["php_version"],
         "versions": CONFIG["php_versions"]
     }
+
+def update_requirements(agent_token: str):
+    """Update Python requirements"""
+    protect(agent_token, agent_token)
+    try:
+        # Requirements dosyasını indir
+        result = subprocess.run(
+            ["curl", "-fsSL", "https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/requirements.txt", "-o", "/tmp/requirements.txt"],
+            capture_output=True, text=True, timeout=CONFIG["timeouts"]["curl_download"]
+        )
+        
+        if result.returncode == 0:
+            # Python paketlerini güncelle
+            update_result = subprocess.run(
+                ["pip3", "install", "-r", "/tmp/requirements.txt", "--upgrade"],
+                capture_output=True, text=True, timeout=CONFIG["timeouts"]["pip_install"]
+            )
+            
+            if update_result.returncode == 0:
+                return {
+                    "status": "updated",
+                    "message": "Python requirements updated successfully",
+                    "output": update_result.stdout
+                }
+            else:
+                raise HTTPException(500, f"Failed to update requirements: {update_result.stderr}")
+        else:
+            raise HTTPException(500, f"Failed to download requirements: {result.stderr}")
+    except Exception as e:
+        raise HTTPException(500, f"Failed to update requirements: {e}")

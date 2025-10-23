@@ -14,8 +14,16 @@ import uvicorn
 sys.path.append(str(Path(__file__).parent))
 
 from modules.config import load_config
-from modules.api import *
-from modules.base_system import *
+from modules.api import (
+    BuildRequest, RedeployRequest, protect, health_check, system_status, get_sites,
+    get_site_status, get_site_logs, start_site, stop_site, delete_site,
+    update_templates, restart_agent, get_agent_logs, stop_agent, start_agent,
+    update_agent, get_agent_info, get_php_versions, update_requirements
+)
+from modules.base_system import (
+    get_base_system_status, restart_base_system, stop_base_system,
+    start_base_system, update_systemd_service, get_systemd_status
+)
 from modules.site_builder import build_site, redeploy_site
 
 # === CONFIG LOADING ===
@@ -136,6 +144,11 @@ def get_agent_info_endpoint(x_agent_token: str = Header(None)):
 @app.get("/php-versions")
 def get_php_versions_endpoint(x_agent_token: str = Header(None)):
     return get_php_versions(x_agent_token)
+
+# === REQUIREMENTS MANAGEMENT ===
+@app.post("/requirements/update")
+def update_requirements_endpoint(x_agent_token: str = Header(None)):
+    return update_requirements(x_agent_token)
 
 # === BASE SYSTEM MANAGEMENT ===
 @app.get("/base-system/status")
