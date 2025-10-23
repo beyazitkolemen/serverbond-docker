@@ -272,8 +272,16 @@ PYTHON_EOF
 # Python script'ini çalıştır
 python3 /tmp/render_base_system.py "${MYSQL_ROOT_PASS}" "${SHARED_DIR}"
 
-docker compose -f "${SHARED_DIR}/docker-compose.yml" up -d
-success "Base sistem aktif."
+# Docker container'ları kontrol et ve sadece gerekirse başlat
+log_info "Docker container'lar kontrol ediliyor..."
+if docker compose -f "${SHARED_DIR}/docker-compose.yml" ps --services --filter "status=running" | grep -q "shared_mysql\|shared_redis\|traefik\|phpmyadmin"; then
+    log_info "Base sistem container'ları zaten çalışıyor ✅"
+    docker compose -f "${SHARED_DIR}/docker-compose.yml" ps
+else
+    log_info "Base sistem container'ları başlatılıyor..."
+    docker compose -f "${SHARED_DIR}/docker-compose.yml" up -d
+    success "Base sistem aktif."
+fi
 
 # === 8️⃣ Agent kurulumu ===
 log_info "ServerBond Agent kuruluyor..."
