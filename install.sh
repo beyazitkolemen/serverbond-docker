@@ -289,6 +289,11 @@ curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/ma
 curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/api.py -o "/opt/serverbond-agent/modules/api.py"
 curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/base_system.py -o "/opt/serverbond-agent/modules/base_system.py"
 curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/site_builder.py -o "/opt/serverbond-agent/modules/site_builder.py"
+curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/logger.py -o "/opt/serverbond-agent/modules/logger.py"
+curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/backup.py -o "/opt/serverbond-agent/modules/backup.py"
+curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/cache.py -o "/opt/serverbond-agent/modules/cache.py"
+curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/monitoring.py -o "/opt/serverbond-agent/modules/monitoring.py"
+curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/security.py -o "/opt/serverbond-agent/modules/security.py"
 
 # Agent dosyasını çalıştırılabilir yap
 chmod +x "/opt/serverbond-agent/agent.py"
