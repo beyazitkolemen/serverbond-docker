@@ -163,6 +163,28 @@ class MessageResponse(BaseModel):
             }
         }
 
+class UpdateResponse(BaseModel):
+    message: str
+    old_commit: str
+    new_commit: str
+    updated_files: List[str]
+    restart_required: bool
+    restart_success: Optional[bool] = None
+    restart_method: Optional[str] = None
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "message": "Agent updated successfully from GitHub",
+                "old_commit": "abc123def456",
+                "new_commit": "def456ghi789",
+                "updated_files": ["agent.py", "requirements.txt", "config.json"],
+                "restart_required": True,
+                "restart_success": True,
+                "restart_method": "systemd"
+            }
+        }
+
 # === FASTAPI APP ===
 app = FastAPI(
     title="ServerBond Agent",
@@ -180,6 +202,172 @@ app.add_middleware(
 )
 
 # === UTILITY FUNCTIONS ===
+
+def get_git_info():
+    """Get current git commit info"""
+    try:
+        # Get current commit hash
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            cwd=Path(__file__).parent.parent
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+        return "unknown"
+    except Exception:
+        return "unknown"
+
+def get_git_status():
+    """Get git status and changes"""
+    try:
+        # Get current branch
+        branch_result = subprocess.run(
+            ["git", "branch", "--show-current"],
+            capture_output=True,
+            text=True,
+            cwd=Path(__file__).parent.parent
+        )
+        branch = branch_result.stdout.strip() if branch_result.returncode == 0 else "unknown"
+        
+        # Get status
+        status_result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            cwd=Path(__file__).parent.parent
+        )
+        changes = status_result.stdout.strip().split('\n') if status_result.returncode == 0 else []
+        
+        return {
+            "branch": branch,
+            "changes": [line for line in changes if line.strip()]
+        }
+    except Exception:
+        return {"branch": "unknown", "changes": []}
+
+def restart_agent_service():
+    """Restart the agent service"""
+    try:
+        # Try systemd first (recommended for production)
+        systemd_result = subprocess.run(
+            ["sudo", "systemctl", "restart", "serverbond-agent"],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        if systemd_result.returncode == 0:
+            logger.info("Agent service restarted via systemd")
+            return {"success": True, "method": "systemd"}
+        
+        # Fallback to supervisor direct control
+        supervisor_result = subprocess.run(
+            ["sudo", "supervisorctl", "-c", "/opt/serverbond-agent/agent/supervisord.conf", "restart", "serverbond-agent"],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        if supervisor_result.returncode == 0:
+            logger.info("Agent service restarted via supervisor")
+            return {"success": True, "method": "supervisor"}
+        
+        # Try supervisor without config file
+        supervisor_simple_result = subprocess.run(
+            ["sudo", "supervisorctl", "restart", "serverbond-agent"],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        if supervisor_simple_result.returncode == 0:
+            logger.info("Agent service restarted via supervisor (simple)")
+            return {"success": True, "method": "supervisor-simple"}
+        
+        # Last resort: try to restart supervisor itself
+        logger.warning("Direct restart failed, trying to restart supervisor...")
+        supervisor_restart_result = subprocess.run(
+            ["sudo", "supervisorctl", "-c", "/opt/serverbond-agent/agent/supervisord.conf", "reread"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        
+        if supervisor_restart_result.returncode == 0:
+            logger.info("Supervisor config reloaded")
+            return {"success": True, "method": "supervisor-reload"}
+        
+        return {"success": False, "error": "Could not restart service automatically"}
+        
+    except subprocess.TimeoutExpired:
+        logger.error("Service restart timed out")
+        return {"success": False, "error": "Service restart timed out"}
+    except Exception as e:
+        logger.error(f"Error restarting service: {e}")
+        return {"success": False, "error": str(e)}
+
+def update_from_github():
+    """Update agent from GitHub"""
+    try:
+        repo_path = Path(__file__).parent.parent
+        
+        # Get current commit before update
+        old_commit = get_git_info()
+        
+        # Fetch latest changes
+        fetch_result = subprocess.run(
+            ["git", "fetch", "origin"],
+            capture_output=True,
+            text=True,
+            cwd=repo_path
+        )
+        
+        if fetch_result.returncode != 0:
+            raise Exception(f"Git fetch failed: {fetch_result.stderr}")
+        
+        # Get status before pull
+        status_before = get_git_status()
+        
+        # Pull latest changes
+        pull_result = subprocess.run(
+            ["git", "pull", "origin", "main"],
+            capture_output=True,
+            text=True,
+            cwd=repo_path
+        )
+        
+        if pull_result.returncode != 0:
+            raise Exception(f"Git pull failed: {pull_result.stderr}")
+        
+        # Get new commit
+        new_commit = get_git_info()
+        
+        # Get updated files
+        updated_files = []
+        if old_commit != new_commit:
+            diff_result = subprocess.run(
+                ["git", "diff", "--name-only", old_commit, new_commit],
+                capture_output=True,
+                text=True,
+                cwd=repo_path
+            )
+            if diff_result.returncode == 0:
+                updated_files = [line.strip() for line in diff_result.stdout.split('\n') if line.strip()]
+        
+        return {
+            "success": True,
+            "old_commit": old_commit,
+            "new_commit": new_commit,
+            "updated_files": updated_files,
+            "pull_output": pull_result.stdout
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
 
 def get_container_status(container_name):
     """Get container status"""
@@ -466,6 +654,135 @@ networks:
         raise
     except Exception as e:
         logger.error(f"Error building site: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/update", response_model=UpdateResponse)
+async def update_agent():
+    """Update agent from GitHub"""
+    try:
+        logger.info("Starting agent update from GitHub...")
+        
+        # Perform git update
+        update_result = update_from_github()
+        
+        if not update_result["success"]:
+            raise HTTPException(status_code=500, detail=update_result["error"])
+        
+        # Check if there were any updates
+        if update_result["old_commit"] == update_result["new_commit"]:
+            return UpdateResponse(
+                message="Agent is already up to date",
+                old_commit=update_result["old_commit"],
+                new_commit=update_result["new_commit"],
+                updated_files=[],
+                restart_required=False
+            )
+        
+        # Log the update
+        logger.info(f"Agent updated from {update_result['old_commit']} to {update_result['new_commit']}")
+        logger.info(f"Updated files: {update_result['updated_files']}")
+        
+        # Check if restart is required
+        restart_required = any(
+            file in update_result["updated_files"] 
+            for file in ["agent/agent.py", "agent/requirements.txt", "agent/config.json"]
+        )
+        
+        restart_result = None
+        if restart_required:
+            logger.info("Critical files updated, restarting service...")
+            restart_result = restart_agent_service()
+            
+            if restart_result["success"]:
+                logger.info(f"Service restarted successfully via {restart_result['method']}")
+            else:
+                logger.error(f"Service restart failed: {restart_result['error']}")
+        
+        return UpdateResponse(
+            message="Agent updated successfully from GitHub",
+            old_commit=update_result["old_commit"],
+            new_commit=update_result["new_commit"],
+            updated_files=update_result["updated_files"],
+            restart_required=restart_required,
+            restart_success=restart_result["success"] if restart_result else None,
+            restart_method=restart_result["method"] if restart_result and restart_result["success"] else None
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating agent: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/restart", response_model=MessageResponse)
+async def restart_agent():
+    """Manually restart the agent service"""
+    try:
+        logger.info("Manual agent restart requested...")
+        
+        restart_result = restart_agent_service()
+        
+        if restart_result["success"]:
+            return MessageResponse(
+                message=f"Agent restarted successfully via {restart_result['method']}"
+            )
+        else:
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Failed to restart agent: {restart_result['error']}"
+            )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error restarting agent: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/supervisor-status")
+async def get_supervisor_status():
+    """Get supervisor status"""
+    try:
+        # Get supervisor status
+        status_result = subprocess.run(
+            ["sudo", "supervisorctl", "-c", "/opt/serverbond-agent/agent/supervisord.conf", "status"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        
+        # Get systemd status
+        systemd_result = subprocess.run(
+            ["systemctl", "is-active", "serverbond-agent"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        
+        return {
+            "supervisor_status": status_result.stdout if status_result.returncode == 0 else "Error",
+            "systemd_status": systemd_result.stdout.strip() if systemd_result.returncode == 0 else "inactive",
+            "supervisor_running": status_result.returncode == 0,
+            "systemd_running": systemd_result.returncode == 0
+        }
+    except Exception as e:
+        logger.error(f"Error getting supervisor status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/git-status")
+async def get_git_status_info():
+    """Get current git status"""
+    try:
+        current_commit = get_git_info()
+        git_status = get_git_status()
+        
+        return {
+            "current_commit": current_commit,
+            "branch": git_status["branch"],
+            "uncommitted_changes": git_status["changes"],
+            "repo_path": str(Path(__file__).parent.parent)
+        }
+    except Exception as e:
+        logger.error(f"Error getting git status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # === MAIN ===

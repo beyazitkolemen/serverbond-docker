@@ -50,7 +50,8 @@ apt-get install -y -qq \
     python3 \
     python3-pip \
     docker.io \
-    docker-compose
+    docker-compose \
+    supervisor
 
 # === 4. Install Python Dependencies ===
 log "Installing Python dependencies..."
@@ -113,21 +114,36 @@ else
     # Start Traefik
     log "Starting Traefik..."
     docker run -d --name traefik --network $NETWORK \
-        -p 80:80 -p 443:443 -p 8080:8080 \
+        -p 443:443 -p 8080:8080 \
         -v /var/run/docker.sock:/var/run/docker.sock:ro \
         traefik:v3.0 \
         --api.dashboard=true \
         --api.insecure=true \
         --providers.docker=true \
         --providers.docker.exposedbydefault=false \
-        --entrypoints.web.address=:80 \
         --entrypoints.websecure.address=:443 || log "Traefik container already exists"
     
     success "Base services started"
 fi
 
-# === 10. Start Agent ===
-log "Starting agent..."
+# === 10. Setup Supervisor ===
+log "Setting up supervisor..."
+
+# Create supervisor log directory
+mkdir -p /var/log/supervisor
+
+# Copy supervisor configuration
+cp "$AGENT_DIR/supervisord.conf" /etc/supervisor/conf.d/serverbond-agent.conf
+
+# Copy systemd service file
+cp "$AGENT_DIR/serverbond-agent.service" /etc/systemd/system/
+
+# Reload systemd and start service
+systemctl daemon-reload
+systemctl enable serverbond-agent.service
+
+# === 11. Start Agent ===
+log "Starting agent with supervisor..."
 
 # Set environment variables
 export SB_BASE_DIR=$SITES_DIR
@@ -141,19 +157,16 @@ export SB_AGENT_PORT=$AGENT_PORT
 export PYTHONUNBUFFERED=1
 export PYTHONPATH=$AGENT_DIR
 
-# Start agent in background
-cd $AGENT_DIR
-nohup python3 agent.py > /var/log/serverbond-agent.log 2>&1 &
-AGENT_PID=$!
-echo $AGENT_PID > /var/run/serverbond-agent.pid
+# Start supervisor service
+systemctl start serverbond-agent.service
 
-# === 11. Health Check ===
+# === 12. Health Check ===
 log "Performing health check..."
 sleep 5
 
-# Check if agent is running
-if kill -0 $AGENT_PID 2>/dev/null; then
-    success "ServerBond Agent is running! (PID: $AGENT_PID)"
+# Check if supervisor service is running
+if systemctl is-active --quiet serverbond-agent.service; then
+    success "ServerBond Agent service is running!"
     
     # Test HTTP endpoint
     if curl -s http://localhost:$AGENT_PORT/health >/dev/null 2>&1; then
@@ -163,16 +176,18 @@ if kill -0 $AGENT_PID 2>/dev/null; then
         warn "Agent HTTP endpoint not responding"
     fi
     
-    # Show agent info
-    log "Agent PID: $AGENT_PID"
-    log "Log file: /var/log/serverbond-agent.log"
+    # Show service info
+    log "Service status: systemctl status serverbond-agent"
+    log "Log files: /var/log/supervisor/serverbond-agent*.log"
+    log "Supervisor control: supervisorctl -c $AGENT_DIR/supervisord.conf"
     
 else
-    error "Failed to start ServerBond Agent"
-    log "Check logs: tail -f /var/log/serverbond-agent.log"
+    error "Failed to start ServerBond Agent service"
+    log "Check service status: systemctl status serverbond-agent"
+    log "Check logs: journalctl -u serverbond-agent -f"
 fi
 
-# === 12. Final Information ===
+# === 13. Final Information ===
 success "ServerBond Agent installation completed!"
 log "Agent is running on port $AGENT_PORT"
 log "Base services: MySQL (3306), Redis (6379), Traefik (80/443/8080)"
@@ -184,6 +199,13 @@ echo
 log "Next steps:"
 log "1. Access Traefik dashboard: http://$(hostname -I | awk '{print $1}'):8080"
 log "2. Create your first site using the agent API"
-log "3. Check agent logs: tail -f /var/log/serverbond-agent.log"
-log "4. Stop agent: kill \$(cat /var/run/serverbond-agent.pid)"
-log "5. Start agent: cd $AGENT_DIR && nohup python3 agent.py > /var/log/serverbond-agent.log 2>&1 &"
+log "3. Check agent logs: tail -f /var/log/supervisor/serverbond-agent.log"
+log "4. Service management:"
+log "   - Status: systemctl status serverbond-agent"
+log "   - Stop: systemctl stop serverbond-agent"
+log "   - Start: systemctl start serverbond-agent"
+log "   - Restart: systemctl restart serverbond-agent"
+log "5. Supervisor control:"
+log "   - Status: supervisorctl -c $AGENT_DIR/supervisord.conf status"
+log "   - Restart: supervisorctl -c $AGENT_DIR/supervisord.conf restart serverbond-agent"
+log "   - Logs: supervisorctl -c $AGENT_DIR/supervisord.conf tail serverbond-agent"

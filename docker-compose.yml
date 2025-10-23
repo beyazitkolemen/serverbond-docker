@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  serverbond-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: serverbond-agent
+    hostname: serverbond-agent
+    privileged: true
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+      - "443:443"
+      - "8080:8080"
+      - "3306:3306"
+      - "6379:6379"
+    volumes:
+      - serverbond-sites:/opt/sites
+      - serverbond-shared:/opt/shared-services
+      - serverbond-logs:/var/log
+    environment:
+      - SB_BASE_DIR=/opt/sites
+      - SB_TEMPLATE_DIR=/opt/serverbond-agent/templates
+      - SB_NETWORK=shared_net
+      - SB_AGENT_PORT=8000
+      - SB_AGENT_TOKEN=default_token
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/opt/serverbond-agent/agent
+    networks:
+      - serverbond-network
+    command: ["/opt/serverbond-agent/entrypoint.sh"]
+
+volumes:
+  serverbond-sites:
+    driver: local
+  serverbond-shared:
+    driver: local
+  serverbond-logs:
+    driver: local
+
+networks:
+  serverbond-network:
+    driver: bridge

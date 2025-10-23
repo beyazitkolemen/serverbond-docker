@@ -1,0 +1,16 @@
+[Unit]
+Description=ServerBond Agent
+After=network.target
+
+[Service]
+Type=forking
+User=root
+Group=root
+ExecStart=/usr/bin/supervisord -c /opt/serverbond-agent/agent/supervisord.conf
+ExecReload=/usr/bin/supervisorctl -c /opt/serverbond-agent/agent/supervisord.conf reload
+ExecStop=/usr/bin/supervisorctl -c /opt/serverbond-agent/agent/supervisord.conf shutdown
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
