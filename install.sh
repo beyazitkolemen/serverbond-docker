@@ -171,19 +171,19 @@ if (base_template_path / 'docker-compose.yml.j2').exists():
 else:
     print('Base system template not found, using fallback')
     # Fallback: Basit bir docker-compose.yml oluştur
-    fallback_content = '''version: '3.8'
+    fallback_content = f'''version: '3.8'
 services:
   shared_mysql:
     image: mysql:8.0
     container_name: shared_mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${mysql_root_password}
+      MYSQL_ROOT_PASSWORD: {base_ctx['mysql_root_password']}
       MYSQL_DATABASE: shared_db
     volumes:
       - mysql_data:/var/lib/mysql
     networks:
-      - ${network}
+      - {base_ctx['network']}
     ports:
       - "3306:3306"
 
@@ -192,7 +192,7 @@ services:
     container_name: shared_redis
     restart: unless-stopped
     networks:
-      - ${network}
+      - {base_ctx['network']}
     ports:
       - "6379:6379"
 
@@ -207,7 +207,7 @@ services:
       - --providers.docker.exposedbydefault=false
       - --entrypoints.web.address=:80
       - --entrypoints.websecure.address=:443
-      - --certificatesresolvers.letsencrypt.acme.email=${traefik_email}
+      - --certificatesresolvers.letsencrypt.acme.email={base_ctx['traefik_email']}
       - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
       - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
     ports:
@@ -218,7 +218,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - traefik_data:/letsencrypt
     networks:
-      - ${network}
+      - {base_ctx['network']}
 
   phpmyadmin:
     image: phpmyadmin/phpmyadmin
@@ -228,7 +228,7 @@ services:
       PMA_HOST: shared_mysql
       PMA_PORT: 3306
     networks:
-      - ${network}
+      - {base_ctx['network']}
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.phpmyadmin.rule=Host:pma.serverbond.dev"
@@ -240,7 +240,7 @@ volumes:
   traefik_data:
 
 networks:
-  ${network}:
+  {base_ctx['network']}:
     external: true
 '''
     with open('${SHARED_DIR}/docker-compose.yml', 'w') as f:
