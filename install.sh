@@ -100,13 +100,20 @@ curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/ma
 # Python paketlerini yükle (externally managed environment için)
 log_info "Python paketleri yükleniyor..."
 
-# Önce psutil'i ayrı olarak yükle (ARM64 için)
-log_info "psutil paketi yükleniyor..."
-pip3 install --break-system-packages psutil > /dev/null
+# psutil'i sistem paketinden kurmayı dene (tercih edilen)
+log_info "psutil (apt) kuruluyor..."
+apt-get install -y -qq python3-psutil > /dev/null || true
 
-# Diğer paketleri yükle
+# psutil import kontrolü; başarısızsa pip ile yükle
+if ! python3 -c "import psutil" >/dev/null 2>&1; then
+  log_info "psutil apt ile bulunamadı, pip ile kuruluyor..."
+  pip3 install --break-system-packages psutil > /dev/null
+fi
+
+# requirements.txt içinden psutil satırını çıkar ve diğer paketleri kur
+grep -vi '^psutil' /tmp/requirements.txt > /tmp/requirements.nopsutil.txt || true
 log_info "Diğer Python paketleri yükleniyor..."
-pip3 install --break-system-packages -r /tmp/requirements.txt > /dev/null
+pip3 install --break-system-packages -r /tmp/requirements.nopsutil.txt > /dev/null
 
 # Jinja2'nin yüklendiğini kontrol et
 if ! python3 -c "import jinja2" >/dev/null 2>&1; then
@@ -298,7 +305,7 @@ LimitNPROC=32768
 # Logging
 StandardOutput=journal
 StandardError=journal
-Syslog_infoIdentifier=serverbond-agent
+SyslogIdentifier=serverbond-agent
 
 [Install]
 WantedBy=multi-user.target
@@ -328,7 +335,7 @@ if systemctl is-active --quiet serverbond-agent; then
     systemctl status serverbond-agent --no-pager -l
     
     # Log'ları göster (son 10 satır)
-    log_info "Son log_info'lar:"
+    log_info "Son log'lar:"
     journalctl -u serverbond-agent --no-pager -n 10
 else
     error "ServerBond Agent başlatılamadı ❌"
