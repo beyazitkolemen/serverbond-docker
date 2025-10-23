@@ -9,8 +9,9 @@ import json
 import docker
 import subprocess
 from pathlib import Path
-from flask import Flask, request, jsonify
-from flask_cors import CORS
+from fastapi import FastAPI, HTTPException, Header, Depends
+from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
 
 # Add modules to path
 sys.path.append(str(Path(__file__).parent))
@@ -31,16 +32,32 @@ except Exception as e:
     logger.error(f"Failed to initialize Docker client: {e}")
     sys.exit(1)
 
-# === FLASK APP ===
-app = Flask(__name__)
-CORS(app)
+# === FASTAPI APP ===
+app = FastAPI(
+    title="ServerBond Agent",
+    description="Docker Multi-site Management System",
+    version="1.0.0"
+)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # === UTILITY FUNCTIONS ===
-def validate_token():
+def validate_token(authorization: str = Header(None)):
     """Validate agent token"""
-    token = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
+    
+    token = authorization.replace("Bearer ", "")
     if token != AGENT_TOKEN:
-        return False
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
     return True
 
 def get_container_status(container_name):
@@ -81,22 +98,19 @@ def detect_framework(site_path):
 
 # === API ENDPOINTS ===
 
-@app.route('/health', methods=['GET'])
-def health():
+@app.get("/health")
+async def health():
     """Health check endpoint"""
-    return jsonify({
+    return {
         "status": "healthy",
         "agent": "ServerBond Agent MVP",
         "version": "1.0",
         "docker": docker_client.ping()
-    })
+    }
 
-@app.route('/status', methods=['GET'])
-def status():
+@app.get("/status")
+async def status(token_valid: bool = Depends(validate_token)):
     """System status"""
-    if not validate_token():
-        return jsonify({"error": "Unauthorized"}), 401
-    
     try:
         # Base system status
         mysql_status = get_container_status("shared_mysql")
@@ -120,7 +134,7 @@ def status():
                         "running": container_status["running"]
                     })
         
-        return jsonify({
+        return {
             "base_system": {
                 "mysql": mysql_status,
                 "redis": redis_status,
@@ -128,17 +142,14 @@ def status():
             },
             "sites": sites,
             "total_sites": len(sites)
-        })
+        }
     except Exception as e:
         logger.error(f"Error getting status: {e}")
-        return jsonify({"error": str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.route('/sites', methods=['GET'])
-def get_sites():
+@app.get("/sites")
+async def get_sites(token_valid: bool = Depends(validate_token)):
     """Get all sites"""
-    if not validate_token():
-        return jsonify({"error": "Unauthorized"}), 401
-    
     try:
         sites = []
         if BASE_DIR.exists():
@@ -156,62 +167,55 @@ def get_sites():
                         "running": container_status["running"]
                     })
         
-        return jsonify({"sites": sites})
+        return {"sites": sites}
     except Exception as e:
         logger.error(f"Error getting sites: {e}")
-        return jsonify({"error": str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.route('/sites/<site_name>/status', methods=['GET'])
-def get_site_status(site_name):
+@app.get("/sites/{site_name}/status")
+async def get_site_status(site_name: str, token_valid: bool = Depends(validate_token)):
     """Get specific site status"""
-    if not validate_token():
-        return jsonify({"error": "Unauthorized"}), 401
-    
     try:
         site_path = BASE_DIR / site_name
         if not site_path.exists():
-            return jsonify({"error": "Site not found"}), 404
+            raise HTTPException(status_code=404, detail="Site not found")
         
         framework = detect_framework(site_path)
         container_status = get_container_status(site_name)
         
-        return jsonify({
+        return {
             "name": site_name,
             "framework": framework,
             "path": str(site_path),
             "status": container_status["status"],
             "running": container_status["running"]
-        })
+        }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting site status: {e}")
-        return jsonify({"error": str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.route('/sites/<site_name>/logs', methods=['GET'])
-def get_site_logs(site_name):
+@app.get("/sites/{site_name}/logs")
+async def get_site_logs(site_name: str, token_valid: bool = Depends(validate_token)):
     """Get site logs"""
-    if not validate_token():
-        return jsonify({"error": "Unauthorized"}), 401
-    
     try:
         container = docker_client.containers.get(site_name)
         logs = container.logs(tail=100).decode('utf-8')
-        return jsonify({"logs": logs})
+        return {"logs": logs}
     except docker.errors.NotFound:
-        return jsonify({"error": "Container not found"}), 404
+        raise HTTPException(status_code=404, detail="Container not found")
     except Exception as e:
         logger.error(f"Error getting logs: {e}")
-        return jsonify({"error": str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.route('/sites/<site_name>/start', methods=['POST'])
-def start_site(site_name):
+@app.post("/sites/{site_name}/start")
+async def start_site(site_name: str, token_valid: bool = Depends(validate_token)):
     """Start a site"""
-    if not validate_token():
-        return jsonify({"error": "Unauthorized"}), 401
-    
     try:
         site_path = BASE_DIR / site_name
         if not site_path.exists():
-            return jsonify({"error": "Site not found"}), 404
+            raise HTTPException(status_code=404, detail="Site not found")
         
         # Start with docker compose
         result = subprocess.run(
@@ -222,23 +226,22 @@ def start_site(site_name):
         )
         
         if result.returncode == 0:
-            return jsonify({"message": f"Site {site_name} started successfully"})
+            return {"message": f"Site {site_name} started successfully"}
         else:
-            return jsonify({"error": result.stderr}), 500
+            raise HTTPException(status_code=500, detail=result.stderr)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error starting site: {e}")
-        return jsonify({"error": str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.route('/sites/<site_name>/stop', methods=['POST'])
-def stop_site(site_name):
+@app.post("/sites/{site_name}/stop")
+async def stop_site(site_name: str, token_valid: bool = Depends(validate_token)):
     """Stop a site"""
-    if not validate_token():
-        return jsonify({"error": "Unauthorized"}), 401
-    
     try:
         site_path = BASE_DIR / site_name
         if not site_path.exists():
-            return jsonify({"error": "Site not found"}), 404
+            raise HTTPException(status_code=404, detail="Site not found")
         
         # Stop with docker compose
         result = subprocess.run(
@@ -249,23 +252,22 @@ def stop_site(site_name):
         )
         
         if result.returncode == 0:
-            return jsonify({"message": f"Site {site_name} stopped successfully"})
+            return {"message": f"Site {site_name} stopped successfully"}
         else:
-            return jsonify({"error": result.stderr}), 500
+            raise HTTPException(status_code=500, detail=result.stderr)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error stopping site: {e}")
-        return jsonify({"error": str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.route('/sites/<site_name>/delete', methods=['DELETE'])
-def delete_site(site_name):
+@app.delete("/sites/{site_name}")
+async def delete_site(site_name: str, token_valid: bool = Depends(validate_token)):
     """Delete a site"""
-    if not validate_token():
-        return jsonify({"error": "Unauthorized"}), 401
-    
     try:
         site_path = BASE_DIR / site_name
         if not site_path.exists():
-            return jsonify({"error": "Site not found"}), 404
+            raise HTTPException(status_code=404, detail="Site not found")
         
         # Stop and remove containers
         subprocess.run(["docker", "compose", "down", "-v"], cwd=site_path)
@@ -274,29 +276,27 @@ def delete_site(site_name):
         import shutil
         shutil.rmtree(site_path)
         
-        return jsonify({"message": f"Site {site_name} deleted successfully"})
+        return {"message": f"Site {site_name} deleted successfully"}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error deleting site: {e}")
-        return jsonify({"error": str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.route('/build', methods=['POST'])
-def build_site():
+@app.post("/build")
+async def build_site(data: dict, token_valid: bool = Depends(validate_token)):
     """Build a new site"""
-    if not validate_token():
-        return jsonify({"error": "Unauthorized"}), 401
-    
     try:
-        data = request.get_json()
         site_name = data.get('name')
         framework = data.get('framework', 'laravel')
         domain = data.get('domain', f"{site_name}.local")
         
         if not site_name:
-            return jsonify({"error": "Site name is required"}), 400
+            raise HTTPException(status_code=400, detail="Site name is required")
         
         site_path = BASE_DIR / site_name
         if site_path.exists():
-            return jsonify({"error": "Site already exists"}), 400
+            raise HTTPException(status_code=400, detail="Site already exists")
         
         # Create site directory
         site_path.mkdir(parents=True, exist_ok=True)
@@ -335,15 +335,17 @@ networks:
             with open(site_path / "docker-compose.yml", "w") as f:
                 f.write(compose_content)
         
-        return jsonify({
+        return {
             "message": f"Site {site_name} created successfully",
             "path": str(site_path),
             "framework": framework,
             "domain": domain
-        })
+        }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error building site: {e}")
-        return jsonify({"error": str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
 # === MAIN ===
 if __name__ == "__main__":
@@ -353,4 +355,4 @@ if __name__ == "__main__":
     logger.info(f"Network: {NETWORK}")
     logger.info(f"Port: {AGENT_PORT}")
     
-    app.run(host='0.0.0.0', port=AGENT_PORT, debug=False)
+    uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)
