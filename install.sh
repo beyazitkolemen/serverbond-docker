@@ -3,6 +3,9 @@ set -euo pipefail
 
 # === MVP ServerBond Agent Installer ===
 # Minimal, simple, and reliable installation script
+# Version: 2.0.0
+# Date: $(date +%Y-%m-%d)
+# Author: ServerBond Team
 
 # Colors for output
 RED='\033[0;31m'
@@ -30,6 +33,8 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 log "Starting ServerBond Agent installation..."
+log "Installer Version: 2.0.0"
+log "Installation Date: $(date)"
 
 # === 2. Update System ===
 log "Updating system packages..."
