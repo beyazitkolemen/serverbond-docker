@@ -146,10 +146,10 @@ log "Starting base services..."
 cd "$SHARED_DIR"
 
 # Check if services are already running
-if docker compose ps --services --filter "status=running" | grep -q "shared_mysql\\|shared_redis\\|traefik"; then
+if docker ps --format "table {{.Names}}" | grep -q "shared_mysql\\|shared_redis\\|traefik"; then
     log "Base services already running"
 else
-    docker compose up -d
+    docker-compose up -d
     success "Base services started"
 fi
 
