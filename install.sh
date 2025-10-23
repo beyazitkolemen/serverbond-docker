@@ -289,62 +289,38 @@ chmod +x "/opt/serverbond-agent/agent.py"
 
 # === 8️⃣ Template'leri indir ===
 log_info "Template'ler indiriliyor..."
+
+# Repository'yi geçici olarak klonla
+log_info "Repository klonlanıyor..."
+cd /tmp
+if [ -d "serverbond-docker" ]; then
+    rm -rf serverbond-docker
+fi
+git clone https://github.com/beyazitkolemen/serverbond-docker.git
+
+# Template'leri kopyala
+log_info "Template dosyaları kopyalanıyor..."
 mkdir -p "/opt/serverbond-agent/templates"
 mkdir -p "/opt/serverbond-agent/base"
 
-# Template dosyalarını GitHub'dan indir
-TEMPLATE_URL="https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/templates"
+# Templates dizinini kopyala
+if [ -d "/tmp/serverbond-docker/templates" ]; then
+    cp -r /tmp/serverbond-docker/templates/* /opt/serverbond-agent/templates/
+    log_info "Template'ler başarıyla kopyalandı"
+else
+    log_info "Templates dizini bulunamadı"
+fi
 
-# Laravel template
-mkdir -p "/opt/serverbond-agent/templates/laravel"
-log_info "Laravel template'leri indiriliyor..."
-curl -fsSL "${TEMPLATE_URL}/laravel/docker-compose.yml.j2" -o "/opt/serverbond-agent/templates/laravel/docker-compose.yml.j2" || log_info "Laravel docker-compose.yml.j2 indirilemedi (URL: ${TEMPLATE_URL}/laravel/docker-compose.yml.j2)"
-curl -fsSL "${TEMPLATE_URL}/laravel/Dockerfile.j2" -o "/opt/serverbond-agent/templates/laravel/Dockerfile.j2" || log_info "Laravel Dockerfile.j2 indirilemedi"
-curl -fsSL "${TEMPLATE_URL}/laravel/nginx.conf.j2" -o "/opt/serverbond-agent/templates/laravel/nginx.conf.j2" || log_info "Laravel nginx.conf.j2 indirilemedi"
-curl -fsSL "${TEMPLATE_URL}/laravel/supervisord.conf.j2" -o "/opt/serverbond-agent/templates/laravel/supervisord.conf.j2" || log_info "Laravel supervisord.conf.j2 indirilemedi"
+# Base dizinini kopyala
+if [ -d "/tmp/serverbond-docker/base" ]; then
+    cp -r /tmp/serverbond-docker/base/* /opt/serverbond-agent/base/
+    log_info "Base template'ler başarıyla kopyalandı"
+else
+    log_info "Base dizini bulunamadı"
+fi
 
-# Laravel Inertia template
-mkdir -p "/opt/serverbond-agent/templates/laravel-inertia"
-log_info "Laravel Inertia template'leri indiriliyor..."
-curl -fsSL "${TEMPLATE_URL}/laravel-inertia/docker-compose.yml.j2" -o "/opt/serverbond-agent/templates/laravel-inertia/docker-compose.yml.j2" || log_info "Laravel Inertia docker-compose.yml.j2 indirilemedi"
-curl -fsSL "${TEMPLATE_URL}/laravel-inertia/Dockerfile.j2" -o "/opt/serverbond-agent/templates/laravel-inertia/Dockerfile.j2" || log_info "Laravel Inertia Dockerfile.j2 indirilemedi"
-curl -fsSL "${TEMPLATE_URL}/laravel-inertia/nginx.conf.j2" -o "/opt/serverbond-agent/templates/laravel-inertia/nginx.conf.j2" || log_info "Laravel Inertia nginx.conf.j2 indirilemedi"
-curl -fsSL "${TEMPLATE_URL}/laravel-inertia/supervisord.conf.j2" -o "/opt/serverbond-agent/templates/laravel-inertia/supervisord.conf.j2" || log_info "Laravel Inertia supervisord.conf.j2 indirilemedi"
-
-# Next.js template
-mkdir -p "/opt/serverbond-agent/templates/nextjs"
-log_info "Next.js template'leri indiriliyor..."
-curl -fsSL "${TEMPLATE_URL}/nextjs/docker-compose.yml.j2" -o "/opt/serverbond-agent/templates/nextjs/docker-compose.yml.j2" || log_info "Next.js docker-compose.yml.j2 indirilemedi"
-curl -fsSL "${TEMPLATE_URL}/nextjs/Dockerfile.j2" -o "/opt/serverbond-agent/templates/nextjs/Dockerfile.j2" || log_info "Next.js Dockerfile.j2 indirilemedi"
-curl -fsSL "${TEMPLATE_URL}/nextjs/next.config.js.j2" -o "/opt/serverbond-agent/templates/nextjs/next.config.js.j2" || log_info "Next.js next.config.js.j2 indirilemedi"
-
-# Node.js API template
-mkdir -p "/opt/serverbond-agent/templates/nodeapi"
-log_info "Node.js API template'leri indiriliyor..."
-curl -fsSL "${TEMPLATE_URL}/nodeapi/docker-compose.yml.j2" -o "/opt/serverbond-agent/templates/nodeapi/docker-compose.yml.j2" || log_info "Node.js API docker-compose.yml.j2 indirilemedi"
-curl -fsSL "${TEMPLATE_URL}/nodeapi/Dockerfile.j2" -o "/opt/serverbond-agent/templates/nodeapi/Dockerfile.j2" || log_info "Node.js API Dockerfile.j2 indirilemedi"
-curl -fsSL "${TEMPLATE_URL}/nodeapi/package.json.j2" -o "/opt/serverbond-agent/templates/nodeapi/package.json.j2" || log_info "Node.js API package.json.j2 indirilemedi"
-curl -fsSL "${TEMPLATE_URL}/nodeapi/tsconfig.json.j2" -o "/opt/serverbond-agent/templates/nodeapi/tsconfig.json.j2" || log_info "Node.js API tsconfig.json.j2 indirilemedi"
-
-# Nuxt template
-mkdir -p "/opt/serverbond-agent/templates/nuxt"
-log_info "Nuxt template'leri indiriliyor..."
-curl -fsSL "${TEMPLATE_URL}/nuxt/docker-compose.yml.j2" -o "/opt/serverbond-agent/templates/nuxt/docker-compose.yml.j2" || log_info "Nuxt docker-compose.yml.j2 indirilemedi"
-curl -fsSL "${TEMPLATE_URL}/nuxt/Dockerfile.j2" -o "/opt/serverbond-agent/templates/nuxt/Dockerfile.j2" || log_info "Nuxt Dockerfile.j2 indirilemedi"
-curl -fsSL "${TEMPLATE_URL}/nuxt/nuxt.config.ts.j2" -o "/opt/serverbond-agent/templates/nuxt/nuxt.config.ts.j2" || log_info "Nuxt nuxt.config.ts.j2 indirilemedi"
-
-# Static template
-mkdir -p "/opt/serverbond-agent/templates/static"
-log_info "Static template'leri indiriliyor..."
-curl -fsSL "${TEMPLATE_URL}/static/docker-compose.yml.j2" -o "/opt/serverbond-agent/templates/static/docker-compose.yml.j2" || log_info "Static docker-compose.yml.j2 indirilemedi"
-curl -fsSL "${TEMPLATE_URL}/static/Dockerfile.j2" -o "/opt/serverbond-agent/templates/static/Dockerfile.j2" || log_info "Static Dockerfile.j2 indirilemedi"
-curl -fsSL "${TEMPLATE_URL}/static/nginx.conf.j2" -o "/opt/serverbond-agent/templates/static/nginx.conf.j2" || log_info "Static nginx.conf.j2 indirilemedi"
-curl -fsSL "${TEMPLATE_URL}/static/index.html.j2" -o "/opt/serverbond-agent/templates/static/index.html.j2" || log_info "Static index.html.j2 indirilemedi"
-
-# Base sistem template'lerini indir
-log_info "Base sistem template'leri indiriliyor..."
-curl -fsSL "https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/base/docker-compose.yml.j2" -o "/opt/serverbond-agent/base/docker-compose.yml.j2" || log_info "Base docker-compose.yml.j2 indirilemedi"
-curl -fsSL "https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/base/serverbond-agent.service.j2" -o "/opt/serverbond-agent/base/serverbond-agent.service.j2" || log_info "Base serverbond-agent.service.j2 indirilemedi"
+# Geçici dizini temizle
+rm -rf /tmp/serverbond-docker
 
 success "Template'ler başarıyla indirildi."
 
