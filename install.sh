@@ -123,55 +123,61 @@ fi
 
 # === 7️⃣ Base sistem kurulumu ===
 log_info "Base sistem yapılandırılıyor..."
-# Base sistem template'ini render et ve kur
-python3 -c "
+
+# Base sistem render script'ini oluştur
+cat > /tmp/render_base_system.py << 'PYTHON_EOF'
 import json
+import sys
 from jinja2 import Environment, FileSystemLoader
 from pathlib import Path
 
-# Config'i yükle
-config_path = Path('/opt/serverbond-agent/config.json')
-if config_path.exists():
-    with open(config_path, 'r') as f:
-        config = json.load(f)
-else:
-    config = {
-        'base_system': {
-            'traefik_email': 'admin@serverbond.dev',
-            'phpmyadmin_domain': 'pma.serverbond.dev'
-        },
-        'docker': {
-            'network': 'shared_net',
-            'shared_mysql_container': 'shared_mysql',
-            'shared_redis_container': 'shared_redis'
+def main():
+    # Config'i yükle
+    config_path = Path('/opt/serverbond-agent/config.json')
+    if config_path.exists():
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+    else:
+        config = {
+            'base_system': {
+                'traefik_email': 'admin@serverbond.dev',
+                'phpmyadmin_domain': 'pma.serverbond.dev'
+            },
+            'docker': {
+                'network': 'shared_net',
+                'shared_mysql_container': 'shared_mysql',
+                'shared_redis_container': 'shared_redis'
+            }
         }
+
+    # Base sistem context'i hazırla
+    mysql_root_pass = sys.argv[1] if len(sys.argv) > 1 else 'default_password'
+    shared_dir = sys.argv[2] if len(sys.argv) > 2 else '/opt/shared-services'
+    
+    base_ctx = {
+        'network': config['docker']['network'],
+        'shared_mysql_container': config['docker']['shared_mysql_container'],
+        'shared_redis_container': config['docker']['shared_redis_container'],
+        'traefik_email': config['base_system']['traefik_email'],
+        'phpmyadmin_domain': config['base_system']['phpmyadmin_domain'],
+        'mysql_root_password': mysql_root_pass
     }
 
-# Base sistem context'i hazırla
-base_ctx = {
-    'network': config['docker']['network'],
-    'shared_mysql_container': config['docker']['shared_mysql_container'],
-    'shared_redis_container': config['docker']['shared_redis_container'],
-    'traefik_email': config['base_system']['traefik_email'],
-    'phpmyadmin_domain': config['base_system']['phpmyadmin_domain'],
-    'mysql_root_password': '${MYSQL_ROOT_PASS}'
-}
-
-# Base sistem docker-compose.yml'yi render et
-base_template_path = Path('/opt/serverbond-agent/base')
-if (base_template_path / 'docker-compose.yml.j2').exists():
-    env = Environment(loader=FileSystemLoader(str(base_template_path)))
-    template = env.get_template('docker-compose.yml.j2')
-    content = template.render(base_ctx)
-    
-    # Docker-compose dosyasını yaz
-    with open('${SHARED_DIR}/docker-compose.yml', 'w') as f:
-        f.write(content)
-    print('Base system template rendered successfully')
-else:
-    print('Base system template not found, using fallback')
-    # Fallback: Basit bir docker-compose.yml oluştur
-    fallback_content = f'''version: '3.8'
+    # Base sistem docker-compose.yml'yi render et
+    base_template_path = Path('/opt/serverbond-agent/base')
+    if (base_template_path / 'docker-compose.yml.j2').exists():
+        env = Environment(loader=FileSystemLoader(str(base_template_path)))
+        template = env.get_template('docker-compose.yml.j2')
+        content = template.render(base_ctx)
+        
+        # Docker-compose dosyasını yaz
+        with open(f'{shared_dir}/docker-compose.yml', 'w') as f:
+            f.write(content)
+        print('Base system template rendered successfully')
+    else:
+        print('Base system template not found, using fallback')
+        # Fallback: Basit bir docker-compose.yml oluştur
+        fallback_content = f'''version: '3.8'
 services:
   shared_mysql:
     image: mysql:8.0
@@ -243,10 +249,16 @@ networks:
   {base_ctx['network']}:
     external: true
 '''
-    with open('${SHARED_DIR}/docker-compose.yml', 'w') as f:
-        f.write(fallback_content)
-    print('Fallback docker-compose.yml created successfully')
-"
+        with open(f'{shared_dir}/docker-compose.yml', 'w') as f:
+            f.write(fallback_content)
+        print('Fallback docker-compose.yml created successfully')
+
+if __name__ == '__main__':
+    main()
+PYTHON_EOF
+
+# Python script'ini çalıştır
+python3 /tmp/render_base_system.py "${MYSQL_ROOT_PASS}" "${SHARED_DIR}"
 
 docker compose -f "${SHARED_DIR}/docker-compose.yml" up -d
 success "Base sistem aktif."
