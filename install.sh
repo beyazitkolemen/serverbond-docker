@@ -57,28 +57,13 @@ log "Installing Docker..."
 if ! command -v docker >/dev/null 2>&1; then
     # Install Docker via apt
     apt-get install -y -qq docker.io docker-compose
-    # Enable Docker service if systemctl is available
-    if command -v systemctl >/dev/null 2>&1; then
-        systemctl enable docker 2>/dev/null || true
-    fi
+    # Docker service will be managed by the host system
 else
     log "Docker already installed"
 fi
 
-# Start Docker if not running
-if ! docker info >/dev/null 2>&1; then
-    log "Starting Docker daemon..."
-    # Try different methods to start Docker
-    if command -v systemctl >/dev/null 2>&1; then
-        systemctl start docker 2>/dev/null || true
-    elif command -v service >/dev/null 2>&1; then
-        service docker start 2>/dev/null || true
-    else
-        # In containers, Docker might already be running
-        log "Docker daemon should be running"
-    fi
-    sleep 3
-fi
+# Docker daemon should be running (managed by host)
+log "Docker daemon should be running"
 
 # Docker group management removed for simplicity
 
