@@ -298,7 +298,7 @@ TEMPLATE_URL="https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker
 # Laravel template
 mkdir -p "/opt/serverbond-agent/templates/laravel"
 log_info "Laravel template'leri indiriliyor..."
-curl -fsSL "${TEMPLATE_URL}/laravel/docker-compose.yml.j2" -o "/opt/serverbond-agent/templates/laravel/docker-compose.yml.j2" || log_info "Laravel docker-compose.yml.j2 indirilemedi"
+curl -fsSL "${TEMPLATE_URL}/laravel/docker-compose.yml.j2" -o "/opt/serverbond-agent/templates/laravel/docker-compose.yml.j2" || log_info "Laravel docker-compose.yml.j2 indirilemedi (URL: ${TEMPLATE_URL}/laravel/docker-compose.yml.j2)"
 curl -fsSL "${TEMPLATE_URL}/laravel/Dockerfile.j2" -o "/opt/serverbond-agent/templates/laravel/Dockerfile.j2" || log_info "Laravel Dockerfile.j2 indirilemedi"
 curl -fsSL "${TEMPLATE_URL}/laravel/nginx.conf.j2" -o "/opt/serverbond-agent/templates/laravel/nginx.conf.j2" || log_info "Laravel nginx.conf.j2 indirilemedi"
 curl -fsSL "${TEMPLATE_URL}/laravel/supervisord.conf.j2" -o "/opt/serverbond-agent/templates/laravel/supervisord.conf.j2" || log_info "Laravel supervisord.conf.j2 indirilemedi"
