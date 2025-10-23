@@ -9,8 +9,10 @@ import json
 import docker
 import subprocess
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, Header, Depends
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List, Optional
 import uvicorn
 
 # Add modules to path
@@ -32,6 +34,135 @@ except Exception as e:
     logger.error(f"Failed to initialize Docker client: {e}")
     sys.exit(1)
 
+# === PYDANTIC MODELS ===
+class SiteInfo(BaseModel):
+    name: str
+    framework: str
+    path: str
+    status: str
+    running: bool
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "name": "my-laravel-app",
+                "framework": "laravel",
+                "path": "/opt/sites/my-laravel-app",
+                "status": "running",
+                "running": True
+            }
+        }
+
+class SiteStatus(BaseModel):
+    name: str
+    framework: str
+    path: str
+    status: str
+    running: bool
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "name": "my-laravel-app",
+                "framework": "laravel",
+                "path": "/opt/sites/my-laravel-app",
+                "status": "running",
+                "running": True
+            }
+        }
+
+class BuildSiteRequest(BaseModel):
+    name: str
+    framework: str = "laravel"
+    domain: Optional[str] = None
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "name": "my-new-site",
+                "framework": "laravel",
+                "domain": "my-new-site.local"
+            }
+        }
+
+class BuildSiteResponse(BaseModel):
+    message: str
+    path: str
+    framework: str
+    domain: str
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "message": "Site my-new-site created successfully",
+                "path": "/opt/sites/my-new-site",
+                "framework": "laravel",
+                "domain": "my-new-site.local"
+            }
+        }
+
+class HealthResponse(BaseModel):
+    status: str
+    agent: str
+    version: str
+    docker: bool
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "status": "healthy",
+                "agent": "ServerBond Agent MVP",
+                "version": "1.0",
+                "docker": True
+            }
+        }
+
+class SystemStatus(BaseModel):
+    base_system: dict
+    sites: List[SiteInfo]
+    total_sites: int
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "base_system": {
+                    "mysql": {"status": "running", "running": True},
+                    "redis": {"status": "running", "running": True},
+                    "traefik": {"status": "running", "running": True}
+                },
+                "sites": [
+                    {
+                        "name": "my-laravel-app",
+                        "framework": "laravel",
+                        "path": "/opt/sites/my-laravel-app",
+                        "status": "running",
+                        "running": True
+                    }
+                ],
+                "total_sites": 1
+            }
+        }
+
+class SiteLogs(BaseModel):
+    logs: str
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "logs": "2024-01-01 12:00:00 [INFO] Starting Laravel application\n2024-01-01 12:00:01 [INFO] Application started successfully"
+            }
+        }
+
+class MessageResponse(BaseModel):
+    message: str
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "message": "Site my-laravel-app started successfully"
+            }
+        }
+
 # === FASTAPI APP ===
 app = FastAPI(
     title="ServerBond Agent",
@@ -49,16 +180,6 @@ app.add_middleware(
 )
 
 # === UTILITY FUNCTIONS ===
-def validate_token(authorization: str = Header(None)):
-    """Validate agent token"""
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
-    
-    token = authorization.replace("Bearer ", "")
-    if token != AGENT_TOKEN:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    
-    return True
 
 def get_container_status(container_name):
     """Get container status"""
@@ -98,18 +219,18 @@ def detect_framework(site_path):
 
 # === API ENDPOINTS ===
 
-@app.get("/health")
+@app.get("/health", response_model=HealthResponse)
 async def health():
     """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "agent": "ServerBond Agent MVP",
-        "version": "1.0",
-        "docker": docker_client.ping()
-    }
+    return HealthResponse(
+        status="healthy",
+        agent="ServerBond Agent MVP",
+        version="1.0",
+        docker=docker_client.ping()
+    )
 
-@app.get("/status")
-async def status(token_valid: bool = Depends(validate_token)):
+@app.get("/status", response_model=SystemStatus)
+async def status():
     """System status"""
     try:
         # Base system status
@@ -126,29 +247,29 @@ async def status(token_valid: bool = Depends(validate_token)):
                     framework = detect_framework(site_dir)
                     container_status = get_container_status(site_name)
                     
-                    sites.append({
-                        "name": site_name,
-                        "framework": framework,
-                        "path": str(site_dir),
-                        "status": container_status["status"],
-                        "running": container_status["running"]
-                    })
+                    sites.append(SiteInfo(
+                        name=site_name,
+                        framework=framework,
+                        path=str(site_dir),
+                        status=container_status["status"],
+                        running=container_status["running"]
+                    ))
         
-        return {
-            "base_system": {
+        return SystemStatus(
+            base_system={
                 "mysql": mysql_status,
                 "redis": redis_status,
                 "traefik": traefik_status
             },
-            "sites": sites,
-            "total_sites": len(sites)
-        }
+            sites=sites,
+            total_sites=len(sites)
+        )
     except Exception as e:
         logger.error(f"Error getting status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/sites")
-async def get_sites(token_valid: bool = Depends(validate_token)):
+@app.get("/sites", response_model=List[SiteInfo])
+async def get_sites():
     """Get all sites"""
     try:
         sites = []
@@ -159,21 +280,21 @@ async def get_sites(token_valid: bool = Depends(validate_token)):
                     framework = detect_framework(site_dir)
                     container_status = get_container_status(site_name)
                     
-                    sites.append({
-                        "name": site_name,
-                        "framework": framework,
-                        "path": str(site_dir),
-                        "status": container_status["status"],
-                        "running": container_status["running"]
-                    })
+                    sites.append(SiteInfo(
+                        name=site_name,
+                        framework=framework,
+                        path=str(site_dir),
+                        status=container_status["status"],
+                        running=container_status["running"]
+                    ))
         
-        return {"sites": sites}
+        return sites
     except Exception as e:
         logger.error(f"Error getting sites: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/sites/{site_name}/status")
-async def get_site_status(site_name: str, token_valid: bool = Depends(validate_token)):
+@app.get("/sites/{site_name}/status", response_model=SiteStatus)
+async def get_site_status(site_name: str):
     """Get specific site status"""
     try:
         site_path = BASE_DIR / site_name
@@ -183,34 +304,34 @@ async def get_site_status(site_name: str, token_valid: bool = Depends(validate_t
         framework = detect_framework(site_path)
         container_status = get_container_status(site_name)
         
-        return {
-            "name": site_name,
-            "framework": framework,
-            "path": str(site_path),
-            "status": container_status["status"],
-            "running": container_status["running"]
-        }
+        return SiteStatus(
+            name=site_name,
+            framework=framework,
+            path=str(site_path),
+            status=container_status["status"],
+            running=container_status["running"]
+        )
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error getting site status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/sites/{site_name}/logs")
-async def get_site_logs(site_name: str, token_valid: bool = Depends(validate_token)):
+@app.get("/sites/{site_name}/logs", response_model=SiteLogs)
+async def get_site_logs(site_name: str):
     """Get site logs"""
     try:
         container = docker_client.containers.get(site_name)
         logs = container.logs(tail=100).decode('utf-8')
-        return {"logs": logs}
+        return SiteLogs(logs=logs)
     except docker.errors.NotFound:
         raise HTTPException(status_code=404, detail="Container not found")
     except Exception as e:
         logger.error(f"Error getting logs: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/sites/{site_name}/start")
-async def start_site(site_name: str, token_valid: bool = Depends(validate_token)):
+@app.post("/sites/{site_name}/start", response_model=MessageResponse)
+async def start_site(site_name: str):
     """Start a site"""
     try:
         site_path = BASE_DIR / site_name
@@ -226,7 +347,7 @@ async def start_site(site_name: str, token_valid: bool = Depends(validate_token)
         )
         
         if result.returncode == 0:
-            return {"message": f"Site {site_name} started successfully"}
+            return MessageResponse(message=f"Site {site_name} started successfully")
         else:
             raise HTTPException(status_code=500, detail=result.stderr)
     except HTTPException:
@@ -235,8 +356,8 @@ async def start_site(site_name: str, token_valid: bool = Depends(validate_token)
         logger.error(f"Error starting site: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/sites/{site_name}/stop")
-async def stop_site(site_name: str, token_valid: bool = Depends(validate_token)):
+@app.post("/sites/{site_name}/stop", response_model=MessageResponse)
+async def stop_site(site_name: str):
     """Stop a site"""
     try:
         site_path = BASE_DIR / site_name
@@ -252,7 +373,7 @@ async def stop_site(site_name: str, token_valid: bool = Depends(validate_token))
         )
         
         if result.returncode == 0:
-            return {"message": f"Site {site_name} stopped successfully"}
+            return MessageResponse(message=f"Site {site_name} stopped successfully")
         else:
             raise HTTPException(status_code=500, detail=result.stderr)
     except HTTPException:
@@ -261,8 +382,8 @@ async def stop_site(site_name: str, token_valid: bool = Depends(validate_token))
         logger.error(f"Error stopping site: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.delete("/sites/{site_name}")
-async def delete_site(site_name: str, token_valid: bool = Depends(validate_token)):
+@app.delete("/sites/{site_name}", response_model=MessageResponse)
+async def delete_site(site_name: str):
     """Delete a site"""
     try:
         site_path = BASE_DIR / site_name
@@ -276,20 +397,20 @@ async def delete_site(site_name: str, token_valid: bool = Depends(validate_token
         import shutil
         shutil.rmtree(site_path)
         
-        return {"message": f"Site {site_name} deleted successfully"}
+        return MessageResponse(message=f"Site {site_name} deleted successfully")
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error deleting site: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/build")
-async def build_site(data: dict, token_valid: bool = Depends(validate_token)):
+@app.post("/build", response_model=BuildSiteResponse)
+async def build_site(data: BuildSiteRequest):
     """Build a new site"""
     try:
-        site_name = data.get('name')
-        framework = data.get('framework', 'laravel')
-        domain = data.get('domain', f"{site_name}.local")
+        site_name = data.name
+        framework = data.framework
+        domain = data.domain or f"{site_name}.local"
         
         if not site_name:
             raise HTTPException(status_code=400, detail="Site name is required")
@@ -335,12 +456,12 @@ networks:
             with open(site_path / "docker-compose.yml", "w") as f:
                 f.write(compose_content)
         
-        return {
-            "message": f"Site {site_name} created successfully",
-            "path": str(site_path),
-            "framework": framework,
-            "domain": domain
-        }
+        return BuildSiteResponse(
+            message=f"Site {site_name} created successfully",
+            path=str(site_path),
+            framework=framework,
+            domain=domain
+        )
     except HTTPException:
         raise
     except Exception as e:
