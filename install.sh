@@ -126,108 +126,16 @@ else
     success "Base services started"
 fi
 
-# === 10. Setup Supervisor ===
-log "Setting up supervisor..."
+# === 10. Setup Complete ===
+log "Installation setup complete!"
 
-# Create supervisor log directory
-mkdir -p /var/log/supervisor
+# === 11. Manual Start Instructions ===
+log "To start the agent manually, run:"
+log "cd $AGENT_DIR/agent"
+log "python3 agent.py"
 
-# Copy supervisor configuration
-cp "$AGENT_DIR/supervisord.conf" /etc/supervisor/conf.d/serverbond-agent.conf
-
-# Create main supervisor configuration if it doesn't exist
-if [ ! -f /etc/supervisor/supervisord.conf ]; then
-    cat > /etc/supervisor/supervisord.conf << 'EOF'
-[unix_http_server]
-file=/tmp/supervisor.sock
-
-[supervisord]
-logfile=/var/log/supervisor/supervisord.log
-logfile_maxbytes=50MB
-logfile_backups=10
-loglevel=info
-pidfile=/tmp/supervisord.pid
-nodaemon=false
-minfds=1024
-minprocs=200
-user=root
-childlogdir=/var/log/supervisor/
-
-[rpcinterface:supervisor]
-supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
-
-[supervisorctl]
-serverurl=unix:///tmp/supervisor.sock
-
-[include]
-files = /etc/supervisor/conf.d/*.conf
-EOF
-fi
-
-# Copy systemd service file
-cp "$AGENT_DIR/serverbond-agent.service" /etc/systemd/system/
-
-# Start supervisor daemon first
-log "Starting supervisor daemon..."
-supervisord -c /etc/supervisor/supervisord.conf
-
-# Wait a moment for supervisor to start
-sleep 2
-
-# Start service with supervisor
-log "Starting agent with supervisor..."
-supervisorctl reread
-supervisorctl update
-supervisorctl start serverbond-agent
-
-# === 11. Start Agent ===
-log "Starting agent with supervisor..."
-
-# Set environment variables
-export SB_BASE_DIR=$SITES_DIR
-export SB_TEMPLATE_DIR=$AGENT_DIR/templates
-export SB_NETWORK=$NETWORK
-export SB_CONFIG_DIR=/opt/serverbond-config
-export SB_SHARED_MYSQL_CONTAINER=shared_mysql
-export SB_SHARED_REDIS_CONTAINER=shared_redis
-export SB_AGENT_TOKEN=$AGENT_TOKEN
-export SB_AGENT_PORT=$AGENT_PORT
-export PYTHONUNBUFFERED=1
-export PYTHONPATH=$AGENT_DIR
-
-# Start supervisor service
-supervisorctl start serverbond-agent
-
-# === 12. Health Check ===
-log "Performing health check..."
-sleep 5
-
-# Check if supervisor service is running
-if supervisorctl status serverbond-agent | grep -q "RUNNING"; then
-    success "ServerBond Agent service is running!"
-    
-    # Test HTTP endpoint
-    if curl -s http://localhost:$AGENT_PORT/health >/dev/null 2>&1; then
-        success "Agent HTTP endpoint is active!"
-        log "Agent URL: http://$(hostname -I | awk '{print $1}'):$AGENT_PORT"
-    else
-        warn "Agent HTTP endpoint not responding"
-    fi
-    
-    # Show service info
-    log "Service status: supervisorctl status serverbond-agent"
-    log "Log files: /var/log/supervisor/serverbond-agent*.log"
-    log "Supervisor control: supervisorctl -c $AGENT_DIR/supervisord.conf"
-    
-else
-    error "Failed to start ServerBond Agent service"
-    log "Check service status: supervisorctl status serverbond-agent"
-    log "Check logs: tail -f /var/log/supervisor/serverbond-agent*.log"
-fi
-
-# === 13. Final Information ===
+# === 12. Final Information ===
 success "ServerBond Agent installation completed!"
-log "Agent is running on port $AGENT_PORT"
 log "Base services: MySQL (3306), Redis (6379), Traefik (80/443/8080)"
 log "Agent directory: $AGENT_DIR"
 log "Sites directory: $SITES_DIR"
@@ -236,14 +144,7 @@ log "Shared services: $SHARED_DIR"
 echo
 log "Next steps:"
 log "1. Access Traefik dashboard: http://$(hostname -I | awk '{print $1}'):8080"
-log "2. Create your first site using the agent API"
-log "3. Check agent logs: tail -f /var/log/supervisor/serverbond-agent.log"
-log "4. Service management:"
-log "   - Status: supervisorctl status serverbond-agent"
-log "   - Stop: supervisorctl stop serverbond-agent"
-log "   - Start: supervisorctl start serverbond-agent"
-log "   - Restart: supervisorctl restart serverbond-agent"
-log "5. Supervisor control:"
-log "   - Status: supervisorctl -c $AGENT_DIR/supervisord.conf status"
-log "   - Restart: supervisorctl -c $AGENT_DIR/supervisord.conf restart serverbond-agent"
-log "   - Logs: supervisorctl -c $AGENT_DIR/supervisord.conf tail serverbond-agent"
+log "2. Start the agent manually:"
+log "   cd $AGENT_DIR/agent"
+log "   python3 agent.py"
+log "3. Create your first site using the agent API"
