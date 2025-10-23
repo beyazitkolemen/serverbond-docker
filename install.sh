@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # === MVP ServerBond Agent Installer ===
-# Simple, modern, and reliable installation script
+# Minimal, simple, and reliable installation script
 
 # Colors for output
 RED='\033[0;31m'
@@ -44,43 +44,24 @@ apt-get install -y -qq \
     git \
     python3 \
     python3-pip \
-    python3-venv \
-    python3-dev \
-    gcc \
-    build-essential \
-    ca-certificates \
-    gnupg \
-    lsb-release
+    docker.io \
+    docker-compose
 
-# === 4. Install Docker ===
-log "Installing Docker..."
-if ! command -v docker >/dev/null 2>&1; then
-    # Install Docker via apt
-    apt-get install -y -qq docker.io docker-compose
-    # Docker service will be managed by the host system
-else
-    log "Docker already installed"
-fi
-
-# Docker daemon should be running (managed by host)
-log "Docker daemon should be running"
-
-# Docker group management removed for simplicity
-
-# === 5. Install Python Dependencies ===
+# === 4. Install Python Dependencies ===
 log "Installing Python dependencies..."
 pip3 install --break-system-packages -q \
-    jinja2 \
-    psutil \
-    requests \
+    fastapi \
+    uvicorn[standard] \
     docker \
-    flask
+    psutil \
+    jinja2 \
+    requests
 
-# === 6. Create Directories ===
+# === 5. Create Directories ===
 log "Creating directories..."
-mkdir -p "$AGENT_DIR" "$SITES_DIR" "$SHARED_DIR" "$SITES_DIR"
+mkdir -p "$AGENT_DIR" "$SITES_DIR" "$SHARED_DIR"
 
-# === 7. Download Agent Files ===
+# === 6. Download Agent Files ===
 log "Downloading agent files..."
 cd /tmp
 git clone -q https://github.com/beyazitkolemen/serverbond-docker.git
@@ -88,20 +69,19 @@ git clone -q https://github.com/beyazitkolemen/serverbond-docker.git
 # Copy agent files
 cp -r serverbond-docker/agent/* "$AGENT_DIR/"
 cp -r serverbond-docker/templates "$AGENT_DIR/"
-cp -r serverbond-docker/base "$AGENT_DIR/"
 
 # Cleanup
 rm -rf serverbond-docker
 
-# === 8. Create Docker Network ===
+# === 7. Create Docker Network ===
 log "Creating Docker network..."
 docker network create "$NETWORK" 2>/dev/null || log "Network already exists"
 
-# === 9. Generate Base System ===
+# === 8. Generate Base System ===
 log "Generating base system configuration..."
 
 # Generate MySQL password
-MYSQL_ROOT_PASS="$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)"
+MYSQL_ROOT_PASS="$(openssl rand -base64 32 | tr -d '=+/' | cut -c1-25)"
 echo "$MYSQL_ROOT_PASS" > "$SHARED_DIR/mysql_root_password.txt"
 
 # Create simple docker-compose.yml
@@ -161,19 +141,19 @@ networks:
     external: true
 EOF
 
-# === 10. Start Base Services ===
+# === 9. Start Base Services ===
 log "Starting base services..."
 cd "$SHARED_DIR"
 
 # Check if services are already running
-if docker compose ps --services --filter "status=running" | grep -q "shared_mysql\|shared_redis\|traefik"; then
+if docker compose ps --services --filter "status=running" | grep -q "shared_mysql\\|shared_redis\\|traefik"; then
     log "Base services already running"
 else
     docker compose up -d
     success "Base services started"
 fi
 
-# === 11. Start Agent ===
+# === 10. Start Agent ===
 log "Starting agent..."
 
 # Set environment variables
@@ -194,7 +174,7 @@ nohup python3 agent.py > /var/log/serverbond-agent.log 2>&1 &
 AGENT_PID=$!
 echo $AGENT_PID > /var/run/serverbond-agent.pid
 
-# === 12. Health Check ===
+# === 11. Health Check ===
 log "Performing health check..."
 sleep 5
 
@@ -219,7 +199,7 @@ else
     log "Check logs: tail -f /var/log/serverbond-agent.log"
 fi
 
-# === 13. Final Information ===
+# === 12. Final Information ===
 success "ServerBond Agent installation completed!"
 log "Agent is running on port $AGENT_PORT"
 log "Base services: MySQL (3306), Redis (6379), Traefik (80/443/8080)"
