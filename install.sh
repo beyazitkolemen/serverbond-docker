@@ -231,7 +231,7 @@ services:
       - ${network}
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.phpmyadmin.rule=Host(\`${phpmyadmin_domain}\`)"
+      - "traefik.http.routers.phpmyadmin.rule=Host:pma.serverbond.dev"
       - "traefik.http.routers.phpmyadmin.tls=true"
       - "traefik.http.routers.phpmyadmin.tls.certresolver=letsencrypt"
 
