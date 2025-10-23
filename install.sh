@@ -138,13 +138,11 @@ cp "$AGENT_DIR/supervisord.conf" /etc/supervisor/conf.d/serverbond-agent.conf
 # Copy systemd service file
 cp "$AGENT_DIR/serverbond-agent.service" /etc/systemd/system/
 
-# Reload systemd and start service (skip in Docker containers)
-if command -v systemctl >/dev/null 2>&1; then
-    systemctl daemon-reload
-    systemctl enable serverbond-agent.service
-else
-    log "Skipping systemctl commands (running in Docker container)"
-fi
+# Start service with supervisor
+log "Starting agent with supervisor..."
+supervisorctl reread
+supervisorctl update
+supervisorctl start serverbond-agent
 
 # === 11. Start Agent ===
 log "Starting agent with supervisor..."
