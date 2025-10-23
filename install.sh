@@ -89,75 +89,40 @@ log "Generating base system configuration..."
 MYSQL_ROOT_PASS="$(openssl rand -base64 32 | tr -d '=+/' | cut -c1-25)"
 echo "$MYSQL_ROOT_PASS" > "$SHARED_DIR/mysql_root_password.txt"
 
-# Create simple docker-compose.yml
-cat > "$SHARED_DIR/docker-compose.yml" << EOF
-version: '3.8'
-services:
-  shared_mysql:
-    image: mysql:8.0
-    container_name: shared_mysql
-    restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: $MYSQL_ROOT_PASS
-      MYSQL_DATABASE: shared_db
-    volumes:
-      - mysql_data:/var/lib/mysql
-    networks:
-      - $NETWORK
-    ports:
-      - "3306:3306"
-
-  shared_redis:
-    image: redis:7-alpine
-    container_name: shared_redis
-    restart: unless-stopped
-    networks:
-      - $NETWORK
-    ports:
-      - "6379:6379"
-
-  traefik:
-    image: traefik:v3.0
-    container_name: traefik
-    restart: unless-stopped
-    command:
-      - --api.dashboard=true
-      - --api.insecure=true
-      - --providers.docker=true
-      - --providers.docker.exposedbydefault=false
-      - --entrypoints.web.address=:80
-      - --entrypoints.websecure.address=:443
-    ports:
-      - "80:80"
-      - "443:443"
-      - "8080:8080"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - traefik_data:/letsencrypt
-    networks:
-      - $NETWORK
-
-volumes:
-  mysql_data:
-  traefik_data:
-
-networks:
-  $NETWORK:
-    external: true
-EOF
-
 # === 9. Start Base Services ===
 log "Starting base services..."
-cd "$SHARED_DIR"
 
 # Check if services are already running
-if docker ps --format "table {{.Names}}" | grep -q "shared_mysql\\|shared_redis\\|traefik"; then
+if docker ps --format "{{.Names}}" | grep -q "shared_mysql\|shared_redis\|traefik"; then
     log "Base services already running"
 else
-    # Start services manually
-    docker run -d --name shared_mysql --network $NETWORK -e MYSQL_ROOT_PASSWORD=$MYSQL_ROOT_PASS -e MYSQL_DATABASE=shared_db -p 3306:3306 mysql:8.0
-    docker run -d --name shared_redis --network $NETWORK -p 6379:6379 redis:7-alpine
-    docker run -d --name traefik --network $NETWORK -p 80:80 -p 443:443 -p 8080:8080 -v /var/run/docker.sock:/var/run/docker.sock:ro traefik:v3.0 --api.dashboard=true --api.insecure=true --providers.docker=true --providers.docker.exposedbydefault=false --entrypoints.web.address=:80 --entrypoints.websecure.address=:443
+    # Start MySQL
+    log "Starting MySQL..."
+    docker run -d --name shared_mysql --network $NETWORK \
+        -e MYSQL_ROOT_PASSWORD=$MYSQL_ROOT_PASS \
+        -e MYSQL_DATABASE=shared_db \
+        -p 3306:3306 \
+        mysql:8.0 || log "MySQL container already exists"
+    
+    # Start Redis
+    log "Starting Redis..."
+    docker run -d --name shared_redis --network $NETWORK \
+        -p 6379:6379 \
+        redis:7-alpine || log "Redis container already exists"
+    
+    # Start Traefik
+    log "Starting Traefik..."
+    docker run -d --name traefik --network $NETWORK \
+        -p 80:80 -p 443:443 -p 8080:8080 \
+        -v /var/run/docker.sock:/var/run/docker.sock:ro \
+        traefik:v3.0 \
+        --api.dashboard=true \
+        --api.insecure=true \
+        --providers.docker=true \
+        --providers.docker.exposedbydefault=false \
+        --entrypoints.web.address=:80 \
+        --entrypoints.websecure.address=:443 || log "Traefik container already exists"
+    
     success "Base services started"
 fi
 
