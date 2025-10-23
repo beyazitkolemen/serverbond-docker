@@ -98,7 +98,19 @@ mkdir -p "${BASE_DIR}" "${SITES_DIR}" "${SHARED_DIR}"/{data,backups,logs}
 
 # === 6.5️⃣ Python ortamı (jinja2 için gerekli) ===
 log_info "Python ortamı hazırlanıyor..."
-apt-get install -y python3 python3-pip python3-venv python3-full python3-dev gcc build-essential > /dev/null
+apt-get install -y python3 python3-pip python3-venv python3-full python3-dev gcc build-essential systemd systemd-sysv > /dev/null
+
+# Systemd'i başlat
+log_info "Systemd başlatılıyor..."
+if command -v systemctl >/dev/null 2>&1; then
+    # Systemd zaten kurulu, sadece başlat
+    log_info "Systemd zaten kurulu"
+else
+    # Systemd'i manuel olarak başlat
+    log_info "Systemd manuel olarak başlatılıyor..."
+    /lib/systemd/systemd --system &
+    sleep 3
+fi
 
 # Requirements dosyasını git clone ile kopyala
 if [ -f "/tmp/serverbond-docker/agent/requirements.txt" ]; then
