@@ -1,146 +1,78 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# === MVP ServerBond Agent Installer ===
-# Minimal, simple, and reliable installation script
-# Version: 2.0.0
-# Date: $(date +%Y-%m-%d)
-# Author: ServerBond Team
+log() { echo -e "\033[1;36m[INFO]\033[0m $*"; }
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+log "=== Docker Agent API kurulumu başlatılıyor ==="
 
-log() { echo -e "${BLUE}[INFO]${NC} $*"; }
-success() { echo -e "${GREEN}[SUCCESS]${NC} $*"; }
-error() { echo -e "${RED}[ERROR]${NC} $*" >&2; exit 1; }
-warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
-
-# === Configuration ===
-AGENT_DIR="/opt/serverbond-agent"
-SITES_DIR="/opt/sites"
-SHARED_DIR="/opt/shared-services"
-NETWORK="shared_net"
-AGENT_PORT=8000
-AGENT_TOKEN="${AGENT_TOKEN:-$(openssl rand -hex 16)}"
-
-# === 1. Root Check ===
-if [[ $EUID -ne 0 ]]; then
-    error "This script must be run as root. Use: sudo $0"
-fi
-
-log "Starting ServerBond Agent installation..."
-log "Installer Version: 2.0.0"
-log "Installation Date: $(date)"
-
-# === 2. Update System ===
-log "Updating system packages..."
-export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get upgrade -y -qq
+apt-get install -y -qq python3 python3-venv python3-pip docker.io
 
-# === 3. Install Dependencies ===
-log "Installing dependencies..."
-apt-get install -y -qq \
-    curl \
-    git \
-    python3 \
-    python3-pip \
-    systemd \
-    systemd-sysv \
-    dbus \
-    dbus-user-session
+mkdir -p /opt/docker-agent
+cd /opt/docker-agent
 
-# === 4. Install Python Dependencies ===
-log "Installing Python dependencies..."
-pip3 install --break-system-packages -q \
-    fastapi \
-    uvicorn[standard] \
-    docker \
-    psutil \
-    jinja2 \
-    requests
+python3 -m venv venv
+source venv/bin/activate
+pip install --upgrade pip
+pip install fastapi uvicorn docker python-dotenv
 
-# === 5. Create Directories ===
-log "Creating directories..."
-mkdir -p "$AGENT_DIR" "$SITES_DIR" "$SHARED_DIR"
+cat > /opt/docker-agent/app.py <<'EOF'
+from fastapi import FastAPI, HTTPException, Depends, Header
+import docker, os
 
-# === 6. Download Agent Files ===
-log "Downloading agent files..."
-cd /tmp
-git clone -q https://github.com/beyazitkolemen/serverbond-docker.git
+API_TOKEN = os.getenv("AGENT_TOKEN", "secret-token")
 
-# Copy agent files
-cp -r serverbond-docker/agent/* "$AGENT_DIR/"
-cp -r serverbond-docker/templates "$AGENT_DIR/"
+app = FastAPI(title="Docker Agent API", version="1.0")
+client = docker.from_env()
 
-# Cleanup
-rm -rf serverbond-docker
+def verify_token(x_token: str = Header(...)):
+    if x_token != API_TOKEN:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    return True
 
-# === 7. Setup Systemd Service ===
-log "Setting up systemd service..."
+@app.get("/containers", dependencies=[Depends(verify_token)])
+def list_containers():
+    containers = client.containers.list(all=True)
+    return [{"id": c.id[:12], "name": c.name, "status": c.status, "image": c.image.tags} for c in containers]
 
-# Ensure systemd is running
-log "Starting systemd..."
-systemctl daemon-reexec || log "Systemd daemon already running"
+@app.post("/containers/run", dependencies=[Depends(verify_token)])
+def run_container(image: str, name: str = None):
+    try:
+        container = client.containers.run(image, name=name, detach=True)
+        return {"id": container.id[:12], "name": container.name}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-# Create systemd service file
-cat > /etc/systemd/system/serverbond-agent.service << EOF
+@app.post("/containers/stop/{container_id}", dependencies=[Depends(verify_token)])
+def stop_container(container_id: str):
+    try:
+        container = client.containers.get(container_id)
+        container.stop()
+        return {"status": "stopped"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+EOF
+
+cat > /etc/systemd/system/docker-agent.service <<'EOF'
 [Unit]
-Description=ServerBond Agent
-After=network.target
+Description=Docker Agent API
+After=network.target docker.service
+Requires=docker.service
 
 [Service]
 Type=simple
 User=root
-WorkingDirectory=$AGENT_DIR/agent
-ExecStart=/usr/bin/python3 $AGENT_DIR/agent/agent.py
+WorkingDirectory=/opt/docker-agent
+Environment="AGENT_TOKEN=your_secure_token_here"
+ExecStart=/opt/docker-agent/venv/bin/uvicorn app:app --host 0.0.0.0 --port 8000
 Restart=always
-RestartSec=10
-Environment=SB_BASE_DIR=$SITES_DIR
-Environment=SB_TEMPLATE_DIR=$AGENT_DIR/templates
-Environment=SB_NETWORK=$NETWORK
-Environment=SB_CONFIG_DIR=/opt/serverbond-config
-Environment=SB_SHARED_MYSQL_CONTAINER=shared_mysql
-Environment=SB_SHARED_REDIS_CONTAINER=shared_redis
-Environment=SB_AGENT_TOKEN=$AGENT_TOKEN
-Environment=SB_AGENT_PORT=$AGENT_PORT
-Environment=PYTHONUNBUFFERED=1
-Environment=PYTHONPATH=$AGENT_DIR
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-# Reload systemd and start service
-log "Starting ServerBond Agent service..."
 systemctl daemon-reload
+systemctl enable docker-agent
+systemctl start docker-agent
 
-# Enable service for auto-start
-systemctl enable serverbond-agent.service
-
-# Start service
-systemctl start serverbond-agent.service
-
-# Wait for service to start
-sleep 5
-
-# Check service status
-if systemctl is-active --quiet serverbond-agent.service; then
-    success "ServerBond Agent is running in background!"
-    log "Service status: systemctl status serverbond-agent"
-    log "Service logs: journalctl -u serverbond-agent -f"
-    log "Service management:"
-    log "  - Stop: systemctl stop serverbond-agent"
-    log "  - Start: systemctl start serverbond-agent"
-    log "  - Restart: systemctl restart serverbond-agent"
-    log "  - Status: systemctl status serverbond-agent"
-else
-    error "Failed to start ServerBond Agent service"
-    log "Check logs: journalctl -u serverbond-agent"
-    log "Check service status: systemctl status serverbond-agent"
-    exit 1
-fi
+log "Docker Agent API başarıyla kuruldu! Port: 8000"
