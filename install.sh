@@ -57,7 +57,10 @@ log "Installing Docker..."
 if ! command -v docker >/dev/null 2>&1; then
     # Install Docker via apt
     apt-get install -y -qq docker.io docker-compose
-    systemctl enable docker
+    # Enable Docker service if systemctl is available
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl enable docker 2>/dev/null || true
+    fi
 else
     log "Docker already installed"
 fi
@@ -65,7 +68,15 @@ fi
 # Start Docker if not running
 if ! docker info >/dev/null 2>&1; then
     log "Starting Docker daemon..."
-    systemctl start docker 2>/dev/null || service docker start 2>/dev/null || true
+    # Try different methods to start Docker
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl start docker 2>/dev/null || true
+    elif command -v service >/dev/null 2>&1; then
+        service docker start 2>/dev/null || true
+    else
+        # In containers, Docker might already be running
+        log "Docker daemon should be running"
+    fi
     sleep 3
 fi
 
