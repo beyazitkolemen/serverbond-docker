@@ -48,7 +48,11 @@ apt-get install -y -qq \
     curl \
     git \
     python3 \
-    python3-pip
+    python3-pip \
+    systemd \
+    systemd-sysv \
+    dbus \
+    dbus-user-session
 
 # === 4. Install Python Dependencies ===
 log "Installing Python dependencies..."
@@ -76,22 +80,67 @@ cp -r serverbond-docker/templates "$AGENT_DIR/"
 # Cleanup
 rm -rf serverbond-docker
 
-# === 7. Start Agent ===
-log "Starting ServerBond Agent..."
+# === 7. Setup Systemd Service ===
+log "Setting up systemd service..."
 
-# Set environment variables
-export SB_BASE_DIR=$SITES_DIR
-export SB_TEMPLATE_DIR=$AGENT_DIR/templates
-export SB_NETWORK=$NETWORK
-export SB_CONFIG_DIR=/opt/serverbond-config
-export SB_SHARED_MYSQL_CONTAINER=shared_mysql
-export SB_SHARED_REDIS_CONTAINER=shared_redis
-export SB_AGENT_TOKEN=$AGENT_TOKEN
-export SB_AGENT_PORT=$AGENT_PORT
-export PYTHONUNBUFFERED=1
-export PYTHONPATH=$AGENT_DIR
+# Ensure systemd is running
+log "Starting systemd..."
+systemctl daemon-reexec || log "Systemd daemon already running"
 
-# Start agent directly
-log "Starting agent with python3..."
-cd $AGENT_DIR/agent
-python3 agent.py
+# Create systemd service file
+cat > /etc/systemd/system/serverbond-agent.service << EOF
+[Unit]
+Description=ServerBond Agent
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=$AGENT_DIR/agent
+ExecStart=/usr/bin/python3 $AGENT_DIR/agent/agent.py
+Restart=always
+RestartSec=10
+Environment=SB_BASE_DIR=$SITES_DIR
+Environment=SB_TEMPLATE_DIR=$AGENT_DIR/templates
+Environment=SB_NETWORK=$NETWORK
+Environment=SB_CONFIG_DIR=/opt/serverbond-config
+Environment=SB_SHARED_MYSQL_CONTAINER=shared_mysql
+Environment=SB_SHARED_REDIS_CONTAINER=shared_redis
+Environment=SB_AGENT_TOKEN=$AGENT_TOKEN
+Environment=SB_AGENT_PORT=$AGENT_PORT
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=$AGENT_DIR
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Reload systemd and start service
+log "Starting ServerBond Agent service..."
+systemctl daemon-reload
+
+# Enable service for auto-start
+systemctl enable serverbond-agent.service
+
+# Start service
+systemctl start serverbond-agent.service
+
+# Wait for service to start
+sleep 5
+
+# Check service status
+if systemctl is-active --quiet serverbond-agent.service; then
+    success "ServerBond Agent is running in background!"
+    log "Service status: systemctl status serverbond-agent"
+    log "Service logs: journalctl -u serverbond-agent -f"
+    log "Service management:"
+    log "  - Stop: systemctl stop serverbond-agent"
+    log "  - Start: systemctl start serverbond-agent"
+    log "  - Restart: systemctl restart serverbond-agent"
+    log "  - Status: systemctl status serverbond-agent"
+else
+    error "Failed to start ServerBond Agent service"
+    log "Check logs: journalctl -u serverbond-agent"
+    log "Check service status: systemctl status serverbond-agent"
+    exit 1
+fi
