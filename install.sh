@@ -160,14 +160,14 @@ export PYTHONUNBUFFERED=1
 export PYTHONPATH=$AGENT_DIR
 
 # Start supervisor service
-systemctl start serverbond-agent.service
+supervisorctl start serverbond-agent
 
 # === 12. Health Check ===
 log "Performing health check..."
 sleep 5
 
 # Check if supervisor service is running
-if systemctl is-active --quiet serverbond-agent.service; then
+if supervisorctl status serverbond-agent | grep -q "RUNNING"; then
     success "ServerBond Agent service is running!"
     
     # Test HTTP endpoint
@@ -179,14 +179,14 @@ if systemctl is-active --quiet serverbond-agent.service; then
     fi
     
     # Show service info
-    log "Service status: systemctl status serverbond-agent"
+    log "Service status: supervisorctl status serverbond-agent"
     log "Log files: /var/log/supervisor/serverbond-agent*.log"
     log "Supervisor control: supervisorctl -c $AGENT_DIR/supervisord.conf"
     
 else
     error "Failed to start ServerBond Agent service"
-    log "Check service status: systemctl status serverbond-agent"
-    log "Check logs: journalctl -u serverbond-agent -f"
+    log "Check service status: supervisorctl status serverbond-agent"
+    log "Check logs: tail -f /var/log/supervisor/serverbond-agent*.log"
 fi
 
 # === 13. Final Information ===
@@ -203,10 +203,10 @@ log "1. Access Traefik dashboard: http://$(hostname -I | awk '{print $1}'):8080"
 log "2. Create your first site using the agent API"
 log "3. Check agent logs: tail -f /var/log/supervisor/serverbond-agent.log"
 log "4. Service management:"
-log "   - Status: systemctl status serverbond-agent"
-log "   - Stop: systemctl stop serverbond-agent"
-log "   - Start: systemctl start serverbond-agent"
-log "   - Restart: systemctl restart serverbond-agent"
+log "   - Status: supervisorctl status serverbond-agent"
+log "   - Stop: supervisorctl stop serverbond-agent"
+log "   - Start: supervisorctl start serverbond-agent"
+log "   - Restart: supervisorctl restart serverbond-agent"
 log "5. Supervisor control:"
 log "   - Status: supervisorctl -c $AGENT_DIR/supervisord.conf status"
 log "   - Restart: supervisorctl -c $AGENT_DIR/supervisord.conf restart serverbond-agent"
