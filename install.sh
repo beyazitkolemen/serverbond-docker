@@ -100,8 +100,14 @@ mkdir -p "${BASE_DIR}" "${SITES_DIR}" "${SHARED_DIR}"/{data,backups,logs}
 log_info "Python ortamı hazırlanıyor..."
 apt-get install -y python3 python3-pip python3-venv python3-full python3-dev gcc build-essential > /dev/null
 
-# Requirements dosyasını indir
-curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/requirements.txt -o "/tmp/requirements.txt"
+# Requirements dosyasını git clone ile kopyala
+if [ -f "/tmp/serverbond-docker/agent/requirements.txt" ]; then
+    cp /tmp/serverbond-docker/agent/requirements.txt /tmp/requirements.txt
+    log_info "Requirements.txt kopyalandı"
+else
+    log_info "Requirements.txt bulunamadı, curl ile indiriliyor..."
+    curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/requirements.txt -o "/tmp/requirements.txt"
+fi
 
 # Python paketlerini yükle (externally managed environment için)
 log_info "Python paketleri yükleniyor..."
@@ -272,35 +278,18 @@ success "Base sistem aktif."
 # === 8️⃣ Agent kurulumu ===
 log_info "ServerBond Agent kuruluyor..."
 
-# Agent dosyalarını git clone ile kopyala
-if [ -f "/tmp/serverbond-docker/agent/agent.py" ]; then
-    cp /tmp/serverbond-docker/agent/agent.py /opt/serverbond-agent/agent.py
-    log_info "Agent.py kopyalandı"
+# Tüm agent dosyalarını git clone ile kopyala
+log_info "Agent dosyaları kopyalanıyor..."
+if [ -d "/tmp/serverbond-docker/agent" ]; then
+    # Agent dizinini tamamen kopyala
+    cp -r /tmp/serverbond-docker/agent/* /opt/serverbond-agent/
+    log_info "Agent dosyaları başarıyla kopyalandı"
 else
-    log_info "Agent.py bulunamadı, curl ile indiriliyor..."
-    curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/agent.py -o "/opt/serverbond-agent/agent.py"
-fi
-
-# Config dosyasını kopyala
-if [ -f "/tmp/serverbond-docker/agent/config.json" ]; then
-    cp /tmp/serverbond-docker/agent/config.json /opt/serverbond-agent/config.json
-    log_info "Config.json kopyalandı"
-else
-    log_info "Config.json bulunamadı, curl ile indiriliyor..."
-    curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/config.json -o "/opt/serverbond-agent/config.json"
-fi
-
-# Agent modules dizinini oluştur
-mkdir -p "/opt/serverbond-agent/modules"
-
-# Agent modules dosyalarını git clone ile kopyala
-log_info "Agent modules kopyalanıyor..."
-if [ -d "/tmp/serverbond-docker/agent/modules" ]; then
-    cp -r /tmp/serverbond-docker/agent/modules/* /opt/serverbond-agent/modules/
-    log_info "Agent modules başarıyla kopyalandı"
-else
-    log_info "Agent modules dizini bulunamadı, curl ile indiriliyor..."
+    log_info "Agent dizini bulunamadı, curl ile indiriliyor..."
     # Fallback: curl ile indir
+    curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/agent.py -o "/opt/serverbond-agent/agent.py"
+    curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/config.json -o "/opt/serverbond-agent/config.json"
+    mkdir -p "/opt/serverbond-agent/modules"
     curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/__init__.py -o "/opt/serverbond-agent/modules/__init__.py"
     curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/config.py -o "/opt/serverbond-agent/modules/config.py"
     curl -fsSL https://raw.githubusercontent.com/beyazitkolemen/serverbond-docker/main/agent/modules/utils.py -o "/opt/serverbond-agent/modules/utils.py"
